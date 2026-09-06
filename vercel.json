@@ -1,4 +1,27 @@
 {
-    "outputDirectory": "public",
-    "buildCommand": "npm run build"
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "version": 2,
+    "builds": [
+        {
+            "src": "api/index.php",
+            "use": "@vercel/php"
+        },
+        {
+            "src": "package.json",
+            "use": "@vercel/static-build",
+            "config": {
+                "distDir": "public",
+                "buildCommand": "composer install --no-dev --optimize-autoloader && npm run build"
+            }
+        }
+    ],
+    "routes": [
+        {
+            "handle": "filesystem"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/api/index.php"
+        }
+    ]
 }

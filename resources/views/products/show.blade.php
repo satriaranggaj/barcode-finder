@@ -6,7 +6,7 @@
     <section class="overflow-hidden rounded-3xl border border-[#eadfca] bg-[#fffdf4]">
         <div class="flex min-h-[420px] items-center justify-center bg-[#f5e6bd] p-6 sm:min-h-[560px]">
             @if ($product->photo)
-                <img src="{{ Storage::disk('public')->url($product->photo) }}" alt="{{ $product->description }}" class="max-h-[510px] w-full rounded-2xl object-contain shadow-xl">
+                <img src="{{ Storage::disk(config('filesystems.product'))->url($product->photo) }}" alt="{{ $product->description }}" class="max-h-[510px] w-full rounded-2xl object-contain shadow-xl">
             @else
                 <div class="text-center text-[#8b7355]"><div class="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl border-2 border-dashed border-[#d8bd68] text-4xl">▧</div><p class="mt-5 text-sm font-semibold">Belum ada foto untuk SKU ini</p></div>
             @endif
