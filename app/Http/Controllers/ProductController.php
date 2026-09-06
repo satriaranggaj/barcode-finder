@@ -123,11 +123,10 @@ class ProductController extends Controller
             ]);
         }
 
-        $productDisk = config('filesystems.product');
-        $photoPath = $validated['image']->store('products', $productDisk);
+        $photoPath = $validated['image']->store('products', 'public');
 
         if ($product->photo) {
-            Storage::disk($productDisk)->delete($product->photo);
+            Storage::disk('public')->delete($product->photo);
         }
 
         $product->forceFill([

@@ -45,7 +45,7 @@
             <a href="{{ route('products.show', $product) }}" class="group overflow-hidden rounded-2xl border border-[#eadfca] bg-[#fffdf4] transition duration-300 hover:-translate-y-1 hover:border-[#ffc20e] hover:shadow-[5px_5px_0_#fff200]">
                 <div class="aspect-square overflow-hidden bg-[#f5e6bd]">
                     @if ($product->photo)
-                        <img src="{{ Storage::disk(config('filesystems.product'))->url($product->photo) }}" alt="{{ $product->description }}" class="h-full w-full object-cover transition duration-500 group-hover:scale-105">
+                        <img src="{{ Storage::disk('public')->url($product->photo) }}" alt="{{ $product->description }}" class="h-full w-full object-cover transition duration-500 group-hover:scale-105">
                     @else
                         <div class="flex h-full flex-col items-center justify-center text-[#8b7355]"><span class="text-4xl">▧</span><span class="mt-3 text-xs font-bold uppercase tracking-wider">Foto belum tersedia</span></div>
                     @endif
