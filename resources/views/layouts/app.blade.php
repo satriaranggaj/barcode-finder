@@ -7,7 +7,7 @@
     <link rel="icon" href="{{ asset('favicon_io/favicon.ico') }}">
     <link rel="apple-touch-icon" sizes="192x192" href="{{ asset('favicon_io/android-chrome-192x192.png') }}">
     <link rel="manifest" href="{{ asset('favicon_io/site.webmanifest') }}">
-    <title>{{ $title ?? 'Lensku' }} · Lensku</title>
+    <title>{{ $title ?? 'Lensku' }}</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-[#fff8d6] text-[#543019] antialiased">
