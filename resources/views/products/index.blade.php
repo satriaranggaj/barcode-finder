@@ -44,6 +44,7 @@
                         type="file"
                         name="image"
                         accept="image/*"
+                        capture="environment"
                         class="sr-only"
                         required
                         data-image-preview

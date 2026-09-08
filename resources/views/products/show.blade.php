@@ -41,6 +41,7 @@
                     type="file"
                     name="images[]"
                     accept="image/*"
+                    capture="environment"
                     multiple
                     class="sr-only"
                     required
