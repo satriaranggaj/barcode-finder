@@ -31,10 +31,10 @@
                 action="{{ route('products.search') }}"
                 method="POST"
                 enctype="multipart/form-data"
+                class="relative"
             >
                 @csrf
 
-                {{-- Tombol utama --}}
                 <button
                     type="button"
                     data-photo-picker
@@ -45,11 +45,10 @@
                     <span>↗</span>
                 </button>
 
-                {{-- Menu pilihan --}}
                 <div
                     id="search-photo-menu"
                     hidden
-                    class="mt-3 overflow-hidden rounded-xl border-2 border-[#543019] bg-white shadow-[4px_4px_0_#543019]"
+                    class="absolute left-0 top-full z-50 mt-3 w-full overflow-hidden rounded-xl border-2 border-[#543019] bg-white shadow-[4px_4px_0_#543019]"
                 >
                     <label
                         for="search-camera"
@@ -59,9 +58,7 @@
 
                         <div>
                             <p class="text-sm font-bold">Ambil Foto</p>
-                            <p class="text-xs opacity-70">
-                                Gunakan kamera HP
-                            </p>
+                            <p class="text-xs opacity-70">Gunakan kamera HP</p>
                         </div>
                     </label>
 
@@ -73,14 +70,11 @@
 
                         <div>
                             <p class="text-sm font-bold">Pilih dari Galeri</p>
-                            <p class="text-xs opacity-70">
-                                Pilih foto yang sudah ada
-                            </p>
+                            <p class="text-xs opacity-70">Pilih foto yang sudah ada</p>
                         </div>
                     </label>
                 </div>
 
-                {{-- Kamera --}}
                 <input
                     id="search-camera"
                     type="file"
@@ -92,7 +86,6 @@
                     data-photo-mode="replace"
                 >
 
-                {{-- Galeri --}}
                 <input
                     id="search-gallery"
                     type="file"
@@ -103,7 +96,6 @@
                     data-photo-mode="replace"
                 >
 
-                {{-- Input ASLI yang dikirim ke Laravel --}}
                 <input
                     id="search-image"
                     type="file"
