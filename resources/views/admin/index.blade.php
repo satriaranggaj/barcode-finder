@@ -6,6 +6,14 @@
     <div class="rounded-2xl bg-[#543019] p-5 text-white md:w-64"><p class="text-xs font-bold uppercase tracking-[0.16em] text-[#fff200]">Kelengkapan foto</p><p class="mt-2 font-display text-4xl font-bold">{{ $totalProducts ? number_format(($productsWithPhotos / $totalProducts) * 100, 0) : 0 }}%</p><p class="mt-1 text-xs text-[#f8e9c2]">{{ $productsWithPhotos }} dari {{ $totalProducts }} produk</p></div>
 </div>
 
+<div class="mb-8 flex flex-wrap gap-2 border-b border-[#eadfca] pb-3">
+    <a href="{{ route('admin.index', ['tab' => 'without-photo', 'q' => $search]) }}" class="rounded-xl px-4 py-2.5 text-sm font-bold {{ $tab === 'without-photo' ? 'bg-[#543019] text-white' : 'text-[#8b5e00] hover:bg-[#fff8d6]' }}">Belum ada foto</a>
+    @if (auth()->user()->isSuperAdmin())
+        <a href="{{ route('admin.index', ['tab' => 'with-photo', 'q' => $search]) }}" class="rounded-xl px-4 py-2.5 text-sm font-bold {{ $tab === 'with-photo' ? 'bg-[#543019] text-white' : 'text-[#8b5e00] hover:bg-[#fff8d6]' }}">Sudah ada foto</a>
+    @endif
+</div>
+
+@if ($tab === 'without-photo')
 <div class="mb-10 grid gap-4 {{ auth()->user()->isSuperAdmin() ? 'xl:grid-cols-2 lg:grid-cols-2' : 'lg:grid-cols-1' }}">
     <form action="{{ route('admin.products.store') }}" method="POST" class="rounded-2xl border border-[#eadfca] bg-[#fffdf4] p-6">
         @csrf
@@ -33,4 +41,15 @@
         <div class="mt-8">{{ $productsWithoutPhotos->links() }}</div>
     @endif
 </section>
+@else
+<section>
+    <div class="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p class="text-xs font-bold uppercase tracking-[0.2em] text-[#8b7355]">03 · Product imagery</p><h2 class="mt-1 font-display text-3xl font-bold tracking-tight">Item sudah memiliki foto</h2></div><form method="GET" action="{{ route('admin.index') }}" class="flex w-full max-w-sm items-center rounded-xl border border-[#ead9b8] bg-[#fffdf4] px-3 focus-within:border-[#ffc20e]"><input type="hidden" name="tab" value="with-photo"><span class="text-lg text-[#8b7355]">⌕</span><input type="search" name="q" value="{{ $search }}" placeholder="Cari SKU atau deskripsi..." class="w-full border-0 bg-transparent px-3 py-3 text-sm outline-none placeholder:text-[#a38f78]"><button class="text-xs font-bold text-[#8b5e00]">Cari</button></form></div>
+    <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        @foreach ($productsWithPhotosList as $product)
+            <a href="{{ route('admin.products.show', $product) }}" class="group overflow-hidden rounded-2xl border border-[#eadfca] bg-[#fffdf4] transition duration-300 hover:-translate-y-1 hover:border-[#ffc20e] hover:shadow-[5px_5px_0_#fff200]"><div class="aspect-square overflow-hidden bg-[#f5e6bd]"><img src="{{ asset('storage/'.$product->photos->first()->path) }}" alt="{{ $product->description }}" class="h-full w-full object-cover transition duration-500 group-hover:scale-105"></div><div class="p-4"><div class="flex items-center justify-between gap-3"><p class="font-mono text-sm font-bold text-[#8b5e00]">{{ $product->sku }}</p><span class="rounded-full bg-[#fff8d6] px-2 py-1 text-[10px] font-bold text-[#8b5e00]">{{ $product->photos->count() }} design</span></div><p class="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-[#543019]">{{ $product->description ?: 'Deskripsi belum tersedia' }}</p><p class="mt-3 text-xs font-bold text-[#8b5e00]">Edit item →</p></div></a>
+        @endforeach
+    </div>
+    <div class="mt-8">{{ $productsWithPhotosList->links() }}</div>
+</section>
+@endif
 @endsection

@@ -27,7 +27,21 @@
                         @endif
                     @endauth
                 </nav>
-                <div class="hidden items-center gap-4 text-xs font-semibold text-[#765c47] md:flex"><span class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-[#ffc20e]"></span> AI ready</span>@auth<div class="flex items-center gap-3"><span>{{ auth()->user()->name }}</span><form method="POST" action="{{ route('logout') }}">@csrf<button class="font-bold text-[#ed1c24]">Keluar</button></form></div>@else<a href="{{ route('login') }}" class="font-bold text-[#8b5e00]">Login</a>@endauth</div>
+                <div class="hidden items-center gap-4 text-xs font-semibold text-[#765c47] md:flex">
+                    <span class="flex items-center gap-2">
+                        <span class="h-2 w-2 rounded-full bg-[#ffc20e]"></span> 
+                            AI ready
+                        </span>@auth
+                        <div class="flex items-center gap-3">
+                            <span>{{ auth()->user()->name }}</span>
+                            <form method="POST" action="{{ route('logout') }}">
+                                @csrf<button class="font-bold text-[#ed1c24]">
+                                    Keluar
+                                </button>
+                            </form>
+                        </div>@else
+                        <a href="{{ route('login') }}" class="font-bold text-[#8b5e00]">Login</a>@endauth
+                    </div>
                 <button type="button" data-nav-toggle aria-expanded="false" aria-controls="mobile-navigation" class="flex h-10 w-10 items-center justify-center rounded-xl border border-[#ead9b8] text-lg text-[#543019] md:hidden">☰</button>
             </div>
             <nav id="mobile-navigation" hidden class="mx-auto mt-4 max-w-[1400px] border-t border-[#eadfca] pt-4 md:hidden">

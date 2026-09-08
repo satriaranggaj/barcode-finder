@@ -11,7 +11,7 @@
     <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         @foreach ($results as $product)
             <a href="{{ request()->routeIs('admin.*') ? route('admin.products.show', $product) : route('products.show', $product) }}" class="group overflow-hidden rounded-2xl border border-[#eadfca] bg-[#fffdf4] transition duration-300 hover:-translate-y-1 hover:border-[#ffc20e] hover:shadow-[5px_5px_0_#fff200]">
-                <div class="aspect-square overflow-hidden bg-[#f5e6bd]"><img src="{{ Storage::disk('public')->url($product->photo) }}" alt="{{ $product->description }}" class="h-full w-full object-cover transition duration-500 group-hover:scale-105"></div>
+                <div class="aspect-square overflow-hidden bg-[#f5e6bd]"><img src="{{ asset('storage/'.$product->photo) }}" alt="{{ $product->description }}" class="h-full w-full object-cover transition duration-500 group-hover:scale-105"></div>
                 <div class="p-4"><div class="flex items-center justify-between gap-3"><p class="font-mono text-sm font-bold text-[#8b5e00]">{{ $product->sku }}</p><span class="rounded-full bg-[#fff8d6] px-2 py-1 text-[10px] font-bold text-[#8b5e00]">{{ number_format((float) $product->similarity * 100, 0) }}% match</span></div><p class="mt-2 line-clamp-2 text-sm font-semibold leading-5 text-[#543019]">{{ $product->description ?: 'Deskripsi belum tersedia' }}</p></div>
             </a>
         @endforeach

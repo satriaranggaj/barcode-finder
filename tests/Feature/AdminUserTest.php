@@ -65,4 +65,41 @@ class AdminUserTest extends TestCase
             'description' => 'Item yang ditambahkan admin',
         ]);
     }
+
+    public function test_super_admin_can_edit_user_without_changing_password_when_password_is_empty(): void
+    {
+        $superAdmin = User::factory()->create(['role' => 'super_admin']);
+        $user = User::factory()->create([
+            'name' => 'Nama Salah',
+            'email' => 'wrong@example.com',
+            'role' => 'admin',
+            'password' => 'old-password',
+        ]);
+        $oldPassword = $user->password;
+
+        $response = $this->actingAs($superAdmin)->put(route('admin.users.update', $user), [
+            'name' => 'Nama Benar',
+            'email' => 'correct@example.com',
+            'role' => 'super_admin',
+            'password' => '',
+            'password_confirmation' => '',
+        ]);
+
+        $response->assertRedirect(route('admin.users.index'));
+        $user->refresh();
+        $this->assertSame('Nama Benar', $user->name);
+        $this->assertSame('correct@example.com', $user->email);
+        $this->assertSame('super_admin', $user->role);
+        $this->assertSame($oldPassword, $user->password);
+    }
+
+    public function test_regular_admin_cannot_edit_user(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($admin)->get(route('admin.users.edit', $user));
+
+        $response->assertForbidden();
+    }
 }

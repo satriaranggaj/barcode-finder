@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Imports\ProductsImport;
 use App\Models\Product;
+use App\Models\ProductPhoto;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,12 +18,13 @@ class ProductController extends Controller
 {
     public function index(Request $request): View
     {
-        $query = Product::query()->whereNotNull('photo');
+        $query = Product::query()->whereHas('photos');
         $search = trim((string) $request->string('q'));
 
         $this->applyProductSearch($query, $search);
 
         $products = $query
+            ->with(['photos' => fn ($query) => $query->latest('id')->limit(1)])
             ->latest('created_at')
             ->paginate(12)
             ->withQueryString();
@@ -36,18 +38,30 @@ class ProductController extends Controller
     public function adminIndex(Request $request): View
     {
         $search = trim((string) $request->string('q'));
+        $tab = $request->string('tab')->toString() === 'with-photo' && auth()->user()->isSuperAdmin()
+            ? 'with-photo'
+            : 'without-photo';
         $productsWithoutPhotos = Product::query()
-            ->whereNull('photo')
+            ->whereDoesntHave('photos')
             ->when($search !== '', fn (Builder $query): Builder => $this->applyProductSearch($query, $search))
             ->latest('created_at')
             ->paginate(12)
+            ->withQueryString();
+        $productsWithPhotosList = Product::query()
+            ->whereHas('photos')
+            ->when($search !== '', fn (Builder $query): Builder => $this->applyProductSearch($query, $search))
+            ->with('photos')
+            ->latest('created_at')
+            ->paginate(12, ['*'], 'photos_page')
             ->withQueryString();
 
         return view('admin.index', [
             'productsWithoutPhotos' => $productsWithoutPhotos,
             'totalProducts' => Product::count(),
-            'productsWithPhotos' => Product::whereNotNull('photo')->count(),
+            'productsWithPhotos' => Product::whereHas('photos')->count(),
+            'productsWithPhotosList' => $productsWithPhotosList,
             'search' => $search,
+            'tab' => $tab,
         ]);
     }
 
@@ -91,14 +105,35 @@ class ProductController extends Controller
         return to_route('admin.index')->with('success', 'Item baru berhasil ditambahkan ke katalog.');
     }
 
+    public function update(Request $request, Product $product): RedirectResponse
+    {
+        abort_unless($request->user()->isSuperAdmin(), 403);
+
+        $validated = $request->validate([
+            'sku' => ['required', 'string', 'max:255', 'unique:products,sku,'.$product->id],
+            'description' => ['nullable', 'string'],
+        ]);
+
+        $product->update([
+            'sku' => trim($validated['sku']),
+            'description' => trim((string) ($validated['description'] ?? '')) ?: null,
+        ]);
+
+        return to_route('admin.products.show', $product)->with('success', 'Data item berhasil diperbarui.');
+    }
+
     public function show(Product $product): View
     {
+        $product->load('photos');
+
         return view('products.show', compact('product'));
     }
 
     public function adminShow(Product $product): View
     {
-        if ($product->photo && ! auth()->user()->isSuperAdmin()) {
+        $product->load('photos');
+
+        if ($product->photos->isNotEmpty() && ! auth()->user()->isSuperAdmin()) {
             abort(403);
         }
 
@@ -107,34 +142,44 @@ class ProductController extends Controller
 
     public function uploadPhoto(Request $request, Product $product): RedirectResponse
     {
-        if ($product->photo && ! $request->user()->isSuperAdmin()) {
+        if ($product->photos()->exists() && ! $request->user()->isSuperAdmin()) {
             abort(403);
         }
 
         $validated = $request->validate([
-            'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'images' => ['required', 'array', 'min:1'],
+            'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
         try {
-            $embedding = $this->createEmbedding($validated['image']);
+            foreach ($validated['images'] as $image) {
+                $embedding = $this->createEmbedding($image);
+                $photoPath = $image->store('products', 'public');
+
+                ProductPhoto::create([
+                    'product_id' => $product->id,
+                    'path' => $photoPath,
+                    'embedding' => '['.implode(',', $embedding).']',
+                ]);
+            }
         } catch (\Throwable $exception) {
             return back()->withInput()->withErrors([
-                'image' => 'Foto belum disimpan karena layanan pencarian gambar sedang tidak tersedia.',
+                'images' => 'Foto belum disimpan karena layanan pencarian gambar sedang tidak tersedia.',
             ]);
         }
 
-        $photoPath = $validated['image']->store('products', 'public');
+        return to_route('admin.products.show', $product)->with('success', count($validated['images']).' design foto SKU berhasil ditambahkan.');
+    }
 
-        if ($product->photo) {
-            Storage::disk('public')->delete($product->photo);
-        }
+    public function deletePhoto(Request $request, ProductPhoto $photo): RedirectResponse
+    {
+        abort_unless($request->user()->isSuperAdmin(), 403);
 
-        $product->forceFill([
-            'photo' => $photoPath,
-            'embedding' => '['.implode(',', $embedding).']',
-        ])->save();
+        $product = $photo->product;
+        Storage::disk('public')->delete($photo->path);
+        $photo->delete();
 
-        return to_route('admin.products.show', $product)->with('success', 'Foto SKU berhasil disimpan.');
+        return to_route('admin.products.show', $product)->with('success', 'Foto design berhasil dihapus.');
     }
 
     public function search(Request $request): View
@@ -178,19 +223,22 @@ class ProductController extends Controller
 
         if (config('database.default') === 'pgsql') {
             return Product::query()
-                ->whereNotNull('embedding')
-                ->selectRaw('products.*, 1 - (embedding <=> CAST(? AS vector)) AS similarity', [$vector])
-                ->whereRaw('1 - (embedding <=> CAST(? AS vector)) >= ?', [$vector, $minimumSimilarity])
-                ->orderByRaw('embedding <=> CAST(? AS vector)', [$vector])
+                ->join('product_photos', 'product_photos.product_id', '=', 'products.id')
+                ->whereNotNull('product_photos.embedding')
+                ->selectRaw('products.*, product_photos.path AS photo, 1 - (product_photos.embedding <=> CAST(? AS vector)) AS similarity', [$vector])
+                ->whereRaw('1 - (product_photos.embedding <=> CAST(? AS vector)) >= ?', [$vector, $minimumSimilarity])
+                ->orderByRaw('product_photos.embedding <=> CAST(? AS vector)', [$vector])
                 ->limit(12)
                 ->get();
         }
 
         return Product::query()
-            ->whereNotNull('embedding')
+            ->join('product_photos', 'product_photos.product_id', '=', 'products.id')
+            ->whereNotNull('product_photos.embedding')
+            ->select('products.*', 'product_photos.path as photo', 'product_photos.embedding as photo_embedding')
             ->get()
             ->map(function (Product $product) use ($embedding): Product {
-                $storedEmbedding = trim((string) $product->embedding, '[]');
+                $storedEmbedding = trim((string) $product->photo_embedding, '[]');
                 $values = array_map('floatval', $storedEmbedding === '' ? [] : explode(',', $storedEmbedding));
                 $product->similarity = $this->cosineSimilarity($embedding, $values);
 
