@@ -31,25 +31,146 @@
         @if (! request()->routeIs('admin.*'))
             <div class="rounded-2xl border border-[#eadfca] bg-[#fff8d6] p-5 text-sm leading-6 text-[#765c47]">Foto produk dikelola oleh administrator katalog.</div>
         @else
-        <form action="{{ route('admin.products.photo.store', $product) }}" method="POST" enctype="multipart/form-data" class="rounded-2xl bg-[#543019] p-5 text-white">
+        <form
+            action="{{ route('admin.products.photo.store', $product) }}"
+            method="POST"
+            enctype="multipart/form-data"
+            class="rounded-2xl bg-[#543019] p-5 text-white"
+        >
             @csrf
-            <p class="text-xs font-bold uppercase tracking-[0.16em] text-[#fff200]">Tambah design foto</p>
-            <p class="mt-2 text-sm leading-6 text-[#f8e9c2]">Pilih satu atau beberapa design. Setiap foto akan menjadi referensi pencarian terpisah.</p>
-            <label class="mt-5 block cursor-pointer rounded-xl border border-dashed border-[#8b5e00] bg-[#6b4025] p-5 text-center transition hover:border-[#fff200]">
-                <span class="block text-sm font-bold">Pilih satu atau beberapa foto</span><span class="mt-1 block text-xs text-[#f8e9c2]">JPG, PNG, atau WEBP · maksimal 10 MB per foto</span>
-                <input
-                    type="file"
-                    name="images[]"
-                    accept="image/*"
-                    capture="environment"
-                    multiple
-                    class="sr-only"
-                    required
-                    data-image-preview
-                    data-preview-target="product-upload-preview"
+
+            <p class="text-xs font-bold uppercase tracking-[0.16em] text-[#fff200]">
+                Tambah design foto
+            </p>
+
+            <p class="mt-2 text-sm leading-6 text-[#f8e9c2]">
+                Pilih satu atau beberapa design. Setiap foto akan menjadi referensi pencarian terpisah.
+            </p>
+
+            {{-- Tombol utama --}}
+            <button
+                type="button"
+                data-photo-picker
+                data-photo-menu="admin-photo-menu"
+                class="mt-5 block w-full cursor-pointer rounded-xl border border-dashed border-[#8b5e00] bg-[#6b4025] p-5 text-center transition hover:border-[#fff200]"
+            >
+                <span class="block text-sm font-bold">
+                    Pilih satu atau beberapa foto
+                </span>
+
+                <span class="mt-1 block text-xs text-[#f8e9c2]">
+                    Kamera atau galeri · maksimal 10 MB per foto
+                </span>
+            </button>
+
+            {{-- Menu pilihan --}}
+            <div
+                id="admin-photo-menu"
+                hidden
+                class="mt-3 overflow-hidden rounded-xl border border-[#8b5e00] bg-[#6b4025]"
+            >
+                <label
+                    for="admin-camera"
+                    class="flex cursor-pointer items-center gap-3 border-b border-[#8b5e00] px-4 py-4 transition hover:bg-[#7a4b2c]"
                 >
-            </label>
-            <div id="product-upload-preview" hidden class="mt-4 rounded-2xl border border-[#8b5e00] bg-[#6b4025] p-3"><div class="flex items-center gap-3"><img data-preview-image alt="Preview foto produk" class="h-20 w-20 rounded-xl object-cover"><div class="min-w-0"><p class="text-[10px] font-bold uppercase tracking-wider text-[#fff200]">Preview foto SKU</p><p data-preview-name class="mt-1 truncate text-xs font-semibold text-[#f8e9c2]"></p></div></div><button data-preview-submit type="submit" hidden class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#fff200] px-4 py-3 text-sm font-bold text-[#543019] transition hover:bg-[#ffc20e]">Konfirmasi & simpan foto <span>→</span></button></div>
+                    <span class="text-xl">📷</span>
+
+                    <div>
+                        <p class="text-sm font-bold">Ambil Foto</p>
+                        <p class="text-xs text-[#f8e9c2]">
+                            Gunakan kamera HP
+                        </p>
+                    </div>
+                </label>
+
+                <label
+                    for="admin-gallery"
+                    class="flex cursor-pointer items-center gap-3 px-4 py-4 transition hover:bg-[#7a4b2c]"
+                >
+                    <span class="text-xl">🖼️</span>
+
+                    <div>
+                        <p class="text-sm font-bold">Pilih dari Galeri</p>
+                        <p class="text-xs text-[#f8e9c2]">
+                            Bisa pilih beberapa foto
+                        </p>
+                    </div>
+                </label>
+            </div>
+
+            {{-- Input khusus kamera --}}
+            <input
+                id="admin-camera"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                class="sr-only"
+                data-photo-source
+                data-photo-target="admin-images"
+                data-photo-mode="append"
+            >
+
+            {{-- Input khusus galeri --}}
+            <input
+                id="admin-gallery"
+                type="file"
+                accept="image/*"
+                multiple
+                class="sr-only"
+                data-photo-source
+                data-photo-target="admin-images"
+                data-photo-mode="append"
+            >
+
+            {{-- Input ASLI yang dikirim ke Laravel --}}
+            <input
+                id="admin-images"
+                type="file"
+                name="images[]"
+                accept="image/*"
+                multiple
+                class="sr-only"
+                required
+                data-image-preview
+                data-preview-target="product-upload-preview"
+            >
+
+            {{-- Preview kamu tetap --}}
+            <div
+                id="product-upload-preview"
+                hidden
+                class="mt-4 rounded-2xl border border-[#8b5e00] bg-[#6b4025] p-3"
+            >
+                <div class="flex items-center gap-3">
+
+                    <img
+                        data-preview-image
+                        alt="Preview foto produk"
+                        class="h-20 w-20 rounded-xl object-cover"
+                    >
+
+                    <div class="min-w-0">
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-[#fff200]">
+                            Preview foto SKU
+                        </p>
+
+                        <p
+                            data-preview-name
+                            class="mt-1 truncate text-xs font-semibold text-[#f8e9c2]"
+                        ></p>
+                    </div>
+                </div>
+
+                <button
+                    data-preview-submit
+                    type="submit"
+                    hidden
+                    class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#fff200] px-4 py-3 text-sm font-bold text-[#543019] transition hover:bg-[#ffc20e]"
+                >
+                    Konfirmasi & simpan foto
+                    <span>→</span>
+                </button>
+            </div>
         </form>
         @endif
     </section>

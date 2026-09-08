@@ -34,24 +34,87 @@
             >
                 @csrf
 
-                <label
-                    class="flex h-full min-h-12 cursor-pointer items-center justify-between gap-2 rounded-xl bg-[#fff200] px-5 py-3 text-sm font-bold text-[#543019] shadow-[4px_4px_0_#543019] transition hover:bg-[#ffc20e]"
+                {{-- Tombol utama --}}
+                <button
+                    type="button"
+                    data-photo-picker
+                    data-photo-menu="search-photo-menu"
+                    class="flex h-full min-h-12 w-full cursor-pointer items-center justify-between gap-2 rounded-xl bg-[#fff200] px-5 py-3 text-sm font-bold text-[#543019] shadow-[4px_4px_0_#543019] transition hover:bg-[#ffc20e]"
                 >
-                    Pilih / ambil foto pencarian
+                    <span>Pilih foto pencarian</span>
                     <span>↗</span>
+                </button>
 
-                    <input
-                        type="file"
-                        name="image"
-                        accept="image/*"
-                        capture="environment"
-                        class="sr-only"
-                        required
-                        data-image-preview
-                        data-preview-target="home-search-preview"
-                        data-submit-target="home-search-submit"
+                {{-- Menu pilihan --}}
+                <div
+                    id="search-photo-menu"
+                    hidden
+                    class="mt-3 overflow-hidden rounded-xl border-2 border-[#543019] bg-white shadow-[4px_4px_0_#543019]"
+                >
+                    <label
+                        for="search-camera"
+                        class="flex cursor-pointer items-center gap-3 border-b border-[#543019]/20 px-4 py-4 text-[#543019] transition hover:bg-[#fff8cc]"
                     >
-                </label>
+                        <span class="text-xl">📷</span>
+
+                        <div>
+                            <p class="text-sm font-bold">Ambil Foto</p>
+                            <p class="text-xs opacity-70">
+                                Gunakan kamera HP
+                            </p>
+                        </div>
+                    </label>
+
+                    <label
+                        for="search-gallery"
+                        class="flex cursor-pointer items-center gap-3 px-4 py-4 text-[#543019] transition hover:bg-[#fff8cc]"
+                    >
+                        <span class="text-xl">🖼️</span>
+
+                        <div>
+                            <p class="text-sm font-bold">Pilih dari Galeri</p>
+                            <p class="text-xs opacity-70">
+                                Pilih foto yang sudah ada
+                            </p>
+                        </div>
+                    </label>
+                </div>
+
+                {{-- Kamera --}}
+                <input
+                    id="search-camera"
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    class="sr-only"
+                    data-photo-source
+                    data-photo-target="search-image"
+                    data-photo-mode="replace"
+                >
+
+                {{-- Galeri --}}
+                <input
+                    id="search-gallery"
+                    type="file"
+                    accept="image/*"
+                    class="sr-only"
+                    data-photo-source
+                    data-photo-target="search-image"
+                    data-photo-mode="replace"
+                >
+
+                {{-- Input ASLI yang dikirim ke Laravel --}}
+                <input
+                    id="search-image"
+                    type="file"
+                    name="image"
+                    accept="image/*"
+                    class="sr-only"
+                    required
+                    data-image-preview
+                    data-preview-target="home-search-preview"
+                    data-submit-target="home-search-submit"
+                >
             </form>
             <form method="GET" action="{{ route('products.index') }}" class="flex min-h-12 items-center rounded-xl border border-[#ead9b8] bg-white px-3 focus-within:border-[#ffc20e]">
                 <span class="text-lg text-[#8b7355]">⌕</span><input type="search" name="q" value="{{ $search }}" placeholder="Cari SKU atau deskripsi..." class="w-full border-0 bg-transparent px-3 py-3 text-sm outline-none placeholder:text-[#a38f78]"><button class="text-xs font-bold text-[#8b5e00]">Cari</button>
