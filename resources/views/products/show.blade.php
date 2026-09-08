@@ -37,7 +37,16 @@
             <p class="mt-2 text-sm leading-6 text-[#f8e9c2]">Pilih satu atau beberapa design. Setiap foto akan menjadi referensi pencarian terpisah.</p>
             <label class="mt-5 block cursor-pointer rounded-xl border border-dashed border-[#8b5e00] bg-[#6b4025] p-5 text-center transition hover:border-[#fff200]">
                 <span class="block text-sm font-bold">Pilih satu atau beberapa foto</span><span class="mt-1 block text-xs text-[#f8e9c2]">JPG, PNG, atau WEBP · maksimal 10 MB per foto</span>
-                <input type="file" name="images[]" accept="image/jpeg,image/png,image/webp" multiple class="sr-only" required data-image-preview data-preview-target="product-upload-preview">
+                <input
+                    type="file"
+                    name="images[]"
+                    accept="image/*"
+                    multiple
+                    class="sr-only"
+                    required
+                    data-image-preview
+                    data-preview-target="product-upload-preview"
+                >
             </label>
             <div id="product-upload-preview" hidden class="mt-4 rounded-2xl border border-[#8b5e00] bg-[#6b4025] p-3"><div class="flex items-center gap-3"><img data-preview-image alt="Preview foto produk" class="h-20 w-20 rounded-xl object-cover"><div class="min-w-0"><p class="text-[10px] font-bold uppercase tracking-wider text-[#fff200]">Preview foto SKU</p><p data-preview-name class="mt-1 truncate text-xs font-semibold text-[#f8e9c2]"></p></div></div><button data-preview-submit type="submit" hidden class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#fff200] px-4 py-3 text-sm font-bold text-[#543019] transition hover:bg-[#ffc20e]">Konfirmasi & simpan foto <span>→</span></button></div>
         </form>

@@ -26,9 +26,31 @@
                 <button id="home-search-submit" data-preview-submit type="submit" form="home-image-search-form" hidden class="mt-3 w-full rounded-xl bg-[#543019] px-4 py-2.5 text-xs font-bold text-white">Konfirmasi & cari →</button>
             </div>
         <div class="grid gap-3 sm:grid-cols-[minmax(190px,0.8fr)_minmax(280px,1.2fr)]">
-            <form id="home-image-search-form" action="{{ route('products.search') }}" method="POST" enctype="multipart/form-data">
+            <form
+                id="home-image-search-form"
+                action="{{ route('products.search') }}"
+                method="POST"
+                enctype="multipart/form-data"
+            >
                 @csrf
-                <label class="flex h-full min-h-12 cursor-pointer items-center justify-between gap-2 rounded-xl bg-[#fff200] px-5 py-3 text-sm font-bold text-[#543019] shadow-[4px_4px_0_#543019] transition hover:bg-[#ffc20e]">Pilih foto pencarian <span>↗</span><input type="file" name="image" accept="image/*" class="sr-only" required data-image-preview data-preview-target="home-search-preview" data-submit-target="home-search-submit"></label>
+
+                <label
+                    class="flex h-full min-h-12 cursor-pointer items-center justify-between gap-2 rounded-xl bg-[#fff200] px-5 py-3 text-sm font-bold text-[#543019] shadow-[4px_4px_0_#543019] transition hover:bg-[#ffc20e]"
+                >
+                    Pilih / ambil foto pencarian
+                    <span>↗</span>
+
+                    <input
+                        type="file"
+                        name="image"
+                        accept="image/*"
+                        class="sr-only"
+                        required
+                        data-image-preview
+                        data-preview-target="home-search-preview"
+                        data-submit-target="home-search-submit"
+                    >
+                </label>
             </form>
             <form method="GET" action="{{ route('products.index') }}" class="flex min-h-12 items-center rounded-xl border border-[#ead9b8] bg-white px-3 focus-within:border-[#ffc20e]">
                 <span class="text-lg text-[#8b7355]">⌕</span><input type="search" name="q" value="{{ $search }}" placeholder="Cari SKU atau deskripsi..." class="w-full border-0 bg-transparent px-3 py-3 text-sm outline-none placeholder:text-[#a38f78]"><button class="text-xs font-bold text-[#8b5e00]">Cari</button>
