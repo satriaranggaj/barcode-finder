@@ -38,7 +38,7 @@ class ProductController extends Controller
     public function adminIndex(Request $request): View
     {
         $search = trim((string) $request->string('q'));
-        $tab = $request->string('tab')->toString() === 'with-photo' && auth()->user()->isSuperAdmin()
+        $tab = $request->string('tab')->toString() === 'with-photo'
             ? 'with-photo'
             : 'without-photo';
         $productsWithoutPhotos = Product::query()
@@ -107,8 +107,6 @@ class ProductController extends Controller
 
     public function update(Request $request, Product $product): RedirectResponse
     {
-        abort_unless($request->user()->isSuperAdmin(), 403);
-
         $validated = $request->validate([
             'sku' => ['required', 'string', 'max:255', 'unique:products,sku,'.$product->id],
             'description' => ['nullable', 'string'],
@@ -133,19 +131,11 @@ class ProductController extends Controller
     {
         $product->load('photos');
 
-        if ($product->photos->isNotEmpty() && ! auth()->user()->isSuperAdmin()) {
-            abort(403);
-        }
-
         return view('products.show', compact('product'));
     }
 
     public function uploadPhoto(Request $request, Product $product): RedirectResponse
     {
-        if ($product->photos()->exists() && ! $request->user()->isSuperAdmin()) {
-            abort(403);
-        }
-
         $validated = $request->validate([
             'images' => ['required', 'array', 'min:1'],
             'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
@@ -171,10 +161,8 @@ class ProductController extends Controller
         return to_route('admin.products.show', $product)->with('success', count($validated['images']).' design foto SKU berhasil ditambahkan.');
     }
 
-    public function deletePhoto(Request $request, ProductPhoto $photo): RedirectResponse
+    public function deletePhoto(ProductPhoto $photo): RedirectResponse
     {
-        abort_unless($request->user()->isSuperAdmin(), 403);
-
         $product = $photo->product;
         Storage::disk('public')->delete($photo->path);
         $photo->delete();

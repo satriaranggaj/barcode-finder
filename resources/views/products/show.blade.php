@@ -6,7 +6,36 @@
     <section class="overflow-hidden rounded-3xl border border-[#eadfca] bg-[#fffdf4]">
         <div class="flex min-h-[420px] items-center justify-center bg-[#f5e6bd] p-6 sm:min-h-[560px]">
             @if ($product->photos->isNotEmpty())
-                <div class="grid w-full gap-4 sm:grid-cols-2">@foreach ($product->photos as $photo)<div class="relative {{ $loop->first ? 'sm:col-span-2' : '' }}"><img src="{{ asset('storage/'.$photo->path) }}" alt="{{ $product->description }}" class="{{ $loop->first ? 'max-h-[430px]' : 'h-40' }} w-full rounded-2xl object-{{ $loop->first ? 'contain' : 'cover' }} shadow-lg">@if (request()->routeIs('admin.*') && auth()->user()->isSuperAdmin())<form method="POST" action="{{ route('admin.photos.destroy', $photo) }}" class="absolute right-2 top-2">@csrf @method('DELETE')<button class="rounded-lg bg-[#ed1c24] px-2 py-1 text-xs font-bold text-white">Hapus</button></form>@endif</div>@endforeach</div>
+                <div class="min-w-0 w-full" @if ($product->photos->count() > 1) data-design-slider role="region" aria-label="Desain produk" @endif>
+                    <div class="flex snap-x snap-mandatory overflow-x-auto rounded-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-design-track>
+                        @foreach ($product->photos as $photo)
+                            <div class="relative w-full shrink-0 snap-center" data-design-slide role="group" aria-label="Desain {{ $loop->iteration }} dari {{ $loop->count }}">
+                                <img src="{{ asset('storage/'.$photo->path) }}" alt="{{ $product->description ?: $product->sku }} - desain {{ $loop->iteration }}" class="h-[360px] w-full object-contain sm:h-[480px]" draggable="false">
+                                @if (request()->routeIs('admin.*'))
+                                    <form method="POST" action="{{ route('admin.photos.destroy', $photo) }}" class="absolute right-2 top-2">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button class="rounded-lg bg-[#ed1c24] px-3 py-2 text-xs font-bold text-white" aria-label="Hapus desain {{ $loop->iteration }}">Hapus</button>
+                                    </form>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                    @if ($product->photos->count() > 1)
+                        <div class="mt-4 flex items-center justify-between gap-4">
+                            <button type="button" data-design-previous aria-label="Desain sebelumnya" class="flex h-11 w-11 items-center justify-center rounded-full bg-[#543019] text-xl text-white">&#8592;</button>
+                            <div class="flex flex-wrap justify-center gap-1" aria-label="Pilih desain">
+                                @foreach ($product->photos as $photo)
+                                    <button type="button" data-design-dot="{{ $loop->index }}" aria-label="Lihat desain {{ $loop->iteration }}" aria-current="{{ $loop->first ? 'true' : 'false' }}" class="group flex h-8 w-8 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-[#543019]">
+                                        <span class="h-2.5 w-2.5 rounded-full bg-[#543019]/25 transition-colors group-aria-[current=true]:bg-[#543019]"></span>
+                                    </button>
+                                @endforeach
+                            </div>
+                            <p class="sr-only" data-design-position aria-live="polite" aria-atomic="true">Desain 1 / {{ $product->photos->count() }}</p>
+                            <button type="button" data-design-next aria-label="Desain berikutnya" class="flex h-11 w-11 items-center justify-center rounded-full bg-[#543019] text-xl text-white">&#8594;</button>
+                        </div>
+                    @endif
+                </div>
             @else
                 <div class="text-center text-[#8b7355]"><div class="mx-auto flex h-24 w-24 items-center justify-center rounded-3xl border-2 border-dashed border-[#d8bd68] text-4xl">▧</div><p class="mt-5 text-sm font-semibold">Belum ada foto untuk SKU ini</p></div>
             @endif
@@ -17,7 +46,7 @@
         <p class="text-xs font-bold uppercase tracking-[0.2em] text-[#8b7355]">Product detail</p>
         <h1 class="mt-3 font-mono text-4xl font-bold tracking-tight text-[#8b5e00]">{{ $product->sku }}</h1>
         <p class="mt-4 text-xl font-semibold leading-8 text-[#543019]">{{ $product->description ?: 'Deskripsi belum tersedia' }}</p>
-        @if (request()->routeIs('admin.*') && auth()->user()->isSuperAdmin())
+        @if (request()->routeIs('admin.*'))
             <form action="{{ route('admin.products.update', $product) }}" method="POST" class="mt-6 rounded-2xl border border-[#eadfca] bg-[#fff8d6] p-4">
                 @csrf
                 @method('PUT')

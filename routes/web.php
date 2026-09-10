@@ -15,17 +15,17 @@ Route::middleware('guest')->group(function (): void {
 });
 Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth')->name('logout');
 
-Route::prefix('admin')->name('admin.')->middleware('admin')->group(function (): void {
+Route::prefix('admin')->name('admin.')->middleware('admin:admin,super_admin')->group(function (): void {
     Route::get('/', [ProductController::class, 'adminIndex'])->name('index');
     Route::get('/products/{product}', [ProductController::class, 'adminShow'])->name('products.show');
     Route::post('/products/{product}/photo', [ProductController::class, 'uploadPhoto'])->name('products.photo.store');
     Route::delete('/photos/{photo}', [ProductController::class, 'deletePhoto'])->name('photos.destroy');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
+    Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
 
     Route::middleware('admin:super_admin')->group(function (): void {
         Route::post('/search', [ProductController::class, 'search'])->name('search');
         Route::post('/import', [ProductController::class, 'importExcel'])->name('import');
-        Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
         Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
         Route::post('/users', [AdminUserController::class, 'store'])->name('users.store');
         Route::get('/users/template', [AdminUserController::class, 'downloadTemplate'])->name('users.template');

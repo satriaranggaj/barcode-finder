@@ -8,9 +8,7 @@
 
 <div class="mb-8 flex flex-wrap gap-2 border-b border-[#eadfca] pb-3">
     <a href="{{ route('admin.index', ['tab' => 'without-photo', 'q' => $search]) }}" class="rounded-xl px-4 py-2.5 text-sm font-bold {{ $tab === 'without-photo' ? 'bg-[#543019] text-white' : 'text-[#8b5e00] hover:bg-[#fff8d6]' }}">Belum ada foto</a>
-    @if (auth()->user()->isSuperAdmin())
         <a href="{{ route('admin.index', ['tab' => 'with-photo', 'q' => $search]) }}" class="rounded-xl px-4 py-2.5 text-sm font-bold {{ $tab === 'with-photo' ? 'bg-[#543019] text-white' : 'text-[#8b5e00] hover:bg-[#fff8d6]' }}">Sudah ada foto</a>
-    @endif
 </div>
 
 @if ($tab === 'without-photo')

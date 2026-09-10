@@ -137,6 +137,39 @@ document.querySelectorAll('[data-image-preview]').forEach((input) => {
 |--------------------------------------------------------------------------
 */
 
+document.querySelectorAll('[data-design-slider]').forEach((slider) => {
+	const track = slider.querySelector('[data-design-track]');
+	const slides = Array.from(track.querySelectorAll('[data-design-slide]'));
+	const position = slider.querySelector('[data-design-position]');
+	const dots = Array.from(slider.querySelectorAll('[data-design-dot]'));
+	let current = 0;
+
+	const move = (step) => {
+		current = (current + step + slides.length) % slides.length;
+		track.scrollTo({
+			left: current * track.clientWidth,
+			behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+		});
+	};
+
+	slider.querySelector('[data-design-previous]').addEventListener('click', () => move(-1));
+	slider.querySelector('[data-design-next]').addEventListener('click', () => move(1));
+	dots.forEach((dot, index) => {
+		dot.addEventListener('click', () => move(index - current));
+	});
+	track.addEventListener('scroll', () => {
+		current = Math.round(track.scrollLeft / track.clientWidth);
+		position.textContent = `Desain ${current + 1} / ${slides.length}`;
+		dots.forEach((dot, index) => dot.setAttribute('aria-current', String(index === current)));
+	}, { passive: true });
+	track.tabIndex = 0;
+	track.addEventListener('keydown', (event) => {
+		if (event.target !== track || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+		event.preventDefault();
+		move(event.key === 'ArrowLeft' ? -1 : 1);
+	});
+});
+
 const navToggle = document.querySelector('[data-nav-toggle]');
 const mobileNavigation = document.getElementById('mobile-navigation');
 

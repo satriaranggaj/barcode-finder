@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminUserTest extends TestCase
@@ -101,5 +104,125 @@ class AdminUserTest extends TestCase
         $response = $this->actingAs($admin)->get(route('admin.users.edit', $user));
 
         $response->assertForbidden();
+    }
+
+    public function test_regular_admin_can_find_items_with_multiple_designs(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'MULTI-1', 'description' => 'Motif bunga']);
+        $product->photos()->createMany([
+            ['path' => 'products/first.jpg'],
+            ['path' => 'products/second.jpg'],
+        ]);
+        Product::create(['sku' => 'EMPTY-1']);
+
+        $response = $this->actingAs($admin)->get(route('admin.index', ['tab' => 'with-photo', 'q' => 'bunga']));
+
+        $response->assertViewHas('tab', 'with-photo')
+            ->assertSee('Sudah ada foto')->assertSee('MULTI-1')->assertSee('2 design')
+            ->assertSee(route('admin.products.show', $product))->assertDontSee('EMPTY-1');
+    }
+
+    public function test_regular_admin_can_open_and_edit_an_item_with_photos(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'EDIT-1', 'description' => 'Deskripsi lama']);
+        $photo = $product->photos()->create(['path' => 'products/existing.jpg']);
+        $this->actingAs($admin)->get(route('admin.products.show', $product))
+            ->assertSee('Edit data item')->assertSee('Tambah design foto')
+            ->assertSee(route('admin.photos.destroy', $photo));
+
+        $response = $this->put(route('admin.products.update', $product), [
+            'sku' => 'EDIT-NEW', 'description' => 'Deskripsi baru',
+        ]);
+
+        $response->assertRedirect(route('admin.products.show', $product))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'sku' => 'EDIT-NEW', 'description' => 'Deskripsi baru']);
+        $this->assertModelExists($photo);
+    }
+
+    public function test_regular_admin_can_add_designs_without_removing_existing_photos(): void
+    {
+        Storage::fake('public');
+        Http::preventStrayRequests();
+        Http::fake([rtrim(config('services.ai.url'), '/').'/embed' => Http::response(['embedding' => [0.1, 0.2]])]);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'UPLOAD-1']);
+        $existing = $product->photos()->create(['path' => 'products/existing.jpg']);
+        Storage::disk('public')->put($existing->path, 'existing');
+
+        $response = $this->actingAs($admin)->post(route('admin.products.photo.store', $product), [
+            'images' => [UploadedFile::fake()->image('one.jpg'), UploadedFile::fake()->image('two.png')],
+        ]);
+
+        $response->assertRedirect(route('admin.products.show', $product))->assertSessionHasNoErrors();
+        $this->assertCount(3, $product->photos);
+        $this->assertModelExists($existing);
+        foreach ($product->photos as $photo) {
+            Storage::disk('public')->assertExists($photo->path);
+        }
+        Http::assertSentCount(2);
+    }
+
+    public function test_regular_admin_can_delete_only_the_selected_design(): void
+    {
+        Storage::fake('public');
+        $admin = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'DELETE-1']);
+        $selected = $product->photos()->create(['path' => 'products/selected.jpg']);
+        $retained = $product->photos()->create(['path' => 'products/retained.jpg']);
+        Storage::disk('public')->put($selected->path, 'selected');
+        Storage::disk('public')->put($retained->path, 'retained');
+
+        $response = $this->actingAs($admin)->delete(route('admin.photos.destroy', $selected));
+
+        $response->assertRedirect(route('admin.products.show', $product));
+        $this->assertModelMissing($selected);
+        $this->assertModelExists($retained);
+        Storage::disk('public')->assertMissing($selected->path);
+        Storage::disk('public')->assertExists($retained->path);
+    }
+
+    public function test_guest_cannot_modify_items_or_photos(): void
+    {
+        $product = Product::create(['sku' => 'PROTECTED-1']);
+        $photo = $product->photos()->create(['path' => 'products/protected.jpg']);
+
+        $this->get(route('admin.products.show', $product))->assertRedirect(route('login'));
+        $this->put(route('admin.products.update', $product), ['sku' => 'CHANGED'])->assertRedirect(route('login'));
+        $this->post(route('admin.products.photo.store', $product))->assertRedirect(route('login'));
+        $this->delete(route('admin.photos.destroy', $photo))->assertRedirect(route('login'));
+
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'sku' => 'PROTECTED-1']);
+        $this->assertModelExists($photo);
+    }
+
+    public function test_regular_admin_cannot_save_a_duplicate_sku(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'ORIGINAL']);
+        Product::create(['sku' => 'TAKEN']);
+
+        $response = $this->actingAs($admin)->put(route('admin.products.update', $product), ['sku' => 'TAKEN']);
+
+        $response->assertSessionHasErrors('sku');
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'sku' => 'ORIGINAL']);
+    }
+
+    public function test_non_admin_cannot_manage_items(): void
+    {
+        $user = User::factory()->create(['role' => 'viewer']);
+        $product = Product::create(['sku' => 'RESTRICTED']);
+        $photo = $product->photos()->create(['path' => 'products/restricted.jpg']);
+        $this->actingAs($user);
+
+        $this->get(route('admin.index'))->assertForbidden();
+        $this->get(route('admin.products.show', $product))->assertForbidden();
+        $this->put(route('admin.products.update', $product), ['sku' => 'CHANGED'])->assertForbidden();
+        $this->post(route('admin.products.photo.store', $product))->assertForbidden();
+        $this->delete(route('admin.photos.destroy', $photo))->assertForbidden();
+
+        $this->assertDatabaseHas('products', ['id' => $product->id, 'sku' => 'RESTRICTED']);
+        $this->assertModelExists($photo);
     }
 }
