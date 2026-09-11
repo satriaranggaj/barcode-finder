@@ -1,0 +1,110 @@
+{
+  "synthetic_vectors_only": true,
+  "sku_accuracy": null,
+  "dimensions": 512,
+  "ef_search": 100,
+  "runs": [
+    {
+      "rows": 10000,
+      "k": 20,
+      "queries": 5,
+      "build_seconds": 6.108028173446655,
+      "ann_recall_at_k": 0.61,
+      "exact_ms": {
+        "median": 57.36994743347168,
+        "p95": 62.847328186035156
+      },
+      "ann_ms": {
+        "median": 14.335155487060547,
+        "p95": 15.405130386352539
+      },
+      "plan_node": "Index Scan",
+      "index": "bench_v2_hnsw"
+    },
+    {
+      "rows": 10000,
+      "k": 30,
+      "queries": 5,
+      "build_seconds": 6.108028173446655,
+      "ann_recall_at_k": 0.5133333333333333,
+      "exact_ms": {
+        "median": 57.778120040893555,
+        "p95": 64.14957046508789
+      },
+      "ann_ms": {
+        "median": 13.540983200073242,
+        "p95": 19.405126571655273
+      },
+      "plan_node": "Index Scan",
+      "index": "bench_v2_hnsw"
+    },
+    {
+      "rows": 10000,
+      "k": 50,
+      "queries": 5,
+      "build_seconds": 6.108028173446655,
+      "ann_recall_at_k": 0.508,
+      "exact_ms": {
+        "median": 60.06193161010742,
+        "p95": 61.90133094787598
+      },
+      "ann_ms": {
+        "median": 15.243053436279297,
+        "p95": 18.74232292175293
+      },
+      "plan_node": "Index Scan",
+      "index": "bench_v2_hnsw"
+    },
+    {
+      "rows": 100000,
+      "k": 20,
+      "queries": 5,
+      "build_seconds": 743.767215013504,
+      "ann_recall_at_k": 0.12,
+      "exact_ms": {
+        "median": 607.1450710296631,
+        "p95": 874.1999626159668
+      },
+      "ann_ms": {
+        "median": 18.371105194091797,
+        "p95": 19.1131591796875
+      },
+      "plan_node": "Index Scan",
+      "index": "bench_v2_hnsw"
+    },
+    {
+      "rows": 100000,
+      "k": 30,
+      "queries": 5,
+      "build_seconds": 743.767215013504,
+      "ann_recall_at_k": 0.1,
+      "exact_ms": {
+        "median": 591.5169715881348,
+        "p95": 607.4333190917969
+      },
+      "ann_ms": {
+        "median": 17.850875854492188,
+        "p95": 19.040966033935547
+      },
+      "plan_node": "Index Scan",
+      "index": "bench_v2_hnsw"
+    },
+    {
+      "rows": 100000,
+      "k": 50,
+      "queries": 5,
+      "build_seconds": 743.767215013504,
+      "ann_recall_at_k": 0.10799999999999998,
+      "exact_ms": {
+        "median": 572.3199844360352,
+        "p95": 603.6397457122803
+      },
+      "ann_ms": {
+        "median": 17.332077026367188,
+        "p95": 21.84748649597168
+      },
+      "plan_node": "Index Scan",
+      "index": "bench_v2_hnsw"
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+-r requirements.txt
+httpx
+psutil==7.2.2

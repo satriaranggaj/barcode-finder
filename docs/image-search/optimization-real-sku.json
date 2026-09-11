@@ -1,0 +1,2621 @@
+{
+  "acceptance_ready": false,
+  "threshold": null,
+  "reason": "Only 12 reference SKUs, 1 tuning query, 2 evaluation queries, no negative queries; capture-session independence unverified.",
+  "latency_scope": "Composed measured CPU AI + offline exact scoring + stateless descriptor pass if needed; excludes HTTP, queue, pgvector and page rendering.",
+  "policy": "Predeclared ablations: global=1, tested descriptor=0.25. No weights or threshold selected from evaluation.",
+  "runs": [
+    {
+      "model": "clip",
+      "variant": "original",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 122.53459299972747,
+      "p95_ms": 127.39162301149918,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "v2",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 201.06505455623847,
+      "p95_ms": 248.175824561622,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "shape",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.3333333333333333,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 366.9486814033007,
+      "p95_ms": 370.593231402745,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "texture",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 339.9921403033659,
+      "p95_ms": 370.7545003082487,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "local",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 456.35533836320974,
+      "p95_ms": 770.3143983526388,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "color",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 361.5109175152611,
+      "p95_ms": 375.45776752522215,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "proportion",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 301.85792916745413,
+      "p95_ms": 359.6299191660364,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "adaptive",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 462.75330093340017,
+      "p95_ms": 776.7123609228292,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "original",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 121.94140757492278,
+      "p95_ms": 126.79843758669449,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "v2",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 201.01808609615546,
+      "p95_ms": 248.128856101539,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "shape",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.3333333333333333,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 366.5316873084521,
+      "p95_ms": 370.1762373078964,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "texture",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 339.8080811602995,
+      "p95_ms": 370.5704411651823,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "local",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 456.44832160905935,
+      "p95_ms": 770.4073815984884,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "color",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 361.5259378857445,
+      "p95_ms": 375.47278789570555,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "proportion",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 301.8681811663555,
+      "p95_ms": 359.6401711649378,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "adaptive",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 458.84132888750173,
+      "p95_ms": 772.8003888769308,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "original",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 121.97764719894622,
+      "p95_ms": 126.83467721071793,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "v2",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 201.06314720760565,
+      "p95_ms": 248.17391721298918,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "shape",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.3333333333333333,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 366.5748410712695,
+      "p95_ms": 370.21939107071375,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 3
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "texture",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 339.89415026735514,
+      "p95_ms": 370.65651027223794,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "local",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 456.93541076616384,
+      "p95_ms": 770.8944707555929,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "color",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 361.4808767742943,
+      "p95_ms": 375.42772678425536,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "proportion",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 301.8510150286602,
+      "p95_ms": 359.62300502724247,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "adaptive",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 0,
+      "top5": 1,
+      "mrr": 0.5,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 461.9624665065203,
+      "p95_ms": 775.9215264959494,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 2
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "original",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 120.2568048829562,
+      "p95_ms": 157.04684313459438,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "v2",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 186.36157716537127,
+      "p95_ms": 244.49845455092145,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "shape",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 277.3722631172859,
+      "p95_ms": 303.32391335832654,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "texture",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 281.8000847764779,
+      "p95_ms": 305.47450505036977,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "local",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 322.800002504664,
+      "p95_ms": 344.86049665429164,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "color",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 268.4765489102574,
+      "p95_ms": 312.5630675240245,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "proportion",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 258.70144441432785,
+      "p95_ms": 312.8649462450994,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "adaptive",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 318.7709669364267,
+      "p95_ms": 349.8441602132516,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "original",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 120.19469684310025,
+      "p95_ms": 156.98580797834438,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "v2",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 186.32044996047625,
+      "p95_ms": 244.46841380995465,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "shape",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 277.2983533577644,
+      "p95_ms": 303.2280690895277,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "texture",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 281.6961342759896,
+      "p95_ms": 305.65355740327504,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "local",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 324.4958738578134,
+      "p95_ms": 344.5813084981637,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "color",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 268.475595235941,
+      "p95_ms": 312.5580607338634,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "proportion",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 258.69834497279953,
+      "p95_ms": 312.8618468035711,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "adaptive",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 318.3010439170175,
+      "p95_ms": 347.44829191186,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "original",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 120.18134540267056,
+      "p95_ms": 156.97579439802212,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "v2",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 186.30244935775409,
+      "p95_ms": 244.44242618483258,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "shape",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 277.28738610312575,
+      "p95_ms": 303.20708825456677,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "texture",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 281.70590943773277,
+      "p95_ms": 305.90151272554067,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "local",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 312.9597524894052,
+      "p95_ms": 341.1132718465524,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "color",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 268.39357924473006,
+      "p95_ms": 312.4829588814464,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "proportion",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 258.70990827388596,
+      "p95_ms": 312.8008116473211,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "clip",
+      "variant": "adaptive",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 316.8929437888437,
+      "p95_ms": 340.1393319509225,
+      "rss_mib": 863.59375,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "original",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 110.56825224659406,
+      "p95_ms": 111.42289223207626,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "v2",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 193.137388152536,
+      "p95_ms": 195.02675815892871,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "shape",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 333.89634304330684,
+      "p95_ms": 361.7103030454018,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "texture",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 321.7765521549154,
+      "p95_ms": 332.8031721539446,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "local",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 408.35995378438383,
+      "p95_ms": 759.7453337846673,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "color",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 317.76799565705005,
+      "p95_ms": 352.82128565886524,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "proportion",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 296.91051942063496,
+      "p95_ms": 305.682369407441,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "adaptive",
+      "split": "tuning",
+      "k": 20,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 416.69196786824614,
+      "p95_ms": 768.0773478685296,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "original",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 110.50626341602765,
+      "p95_ms": 111.36090340150986,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "v2",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 193.1841181940399,
+      "p95_ms": 195.07348820043262,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "shape",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 333.94521885202266,
+      "p95_ms": 361.75917885411764,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "texture",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 321.84473986853845,
+      "p95_ms": 332.87135986756766,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "local",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 409.987160586752,
+      "p95_ms": 761.3725405870355,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "color",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 316.72920590790454,
+      "p95_ms": 351.7824959097197,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "proportion",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 296.03766900254413,
+      "p95_ms": 304.8095189893502,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "adaptive",
+      "split": "tuning",
+      "k": 30,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 409.2671364778653,
+      "p95_ms": 760.6525164781488,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "original",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 110.50602499744855,
+      "p95_ms": 111.36066498293076,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "v2",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 193.1841181940399,
+      "p95_ms": 195.07348820043262,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "shape",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 333.94331150338985,
+      "p95_ms": 361.7572715054848,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "texture",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 321.8375873111654,
+      "p95_ms": 332.8642073101946,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "local",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 416.2699669832364,
+      "p95_ms": 767.6553469835198,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "color",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 316.7261064663762,
+      "p95_ms": 351.7793964681914,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "proportion",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 296.0324237938039,
+      "p95_ms": 304.80427378060995,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "adaptive",
+      "split": "tuning",
+      "k": 50,
+      "queries": 1,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 1,
+      "median_ms": 407.7939480775967,
+      "p95_ms": 759.1793280778802,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 14,
+          "case": "hand_shelf",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "original",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 113.74937103391858,
+      "p95_ms": 125.23166438768385,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "v2",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 173.82706140779192,
+      "p95_ms": 191.03384007757995,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "shape",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 244.50790554692503,
+      "p95_ms": 290.7243598929199,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "texture",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 253.40866358601488,
+      "p95_ms": 295.947228994919,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "local",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 291.82638647034764,
+      "p95_ms": 333.0108743721212,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "color",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 253.57479940430494,
+      "p95_ms": 282.8049242743873,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "proportion",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 247.6467601954937,
+      "p95_ms": 272.2388565161964,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "adaptive",
+      "split": "evaluation",
+      "k": 20,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 173.83862470887834,
+      "p95_ms": 191.06197346991394,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "original",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 113.69739578367444,
+      "p95_ms": 125.18266936967848,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "v2",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 173.77973531984026,
+      "p95_ms": 190.98615636175964,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "shape",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 244.47703034093138,
+      "p95_ms": 290.70147170932614,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "texture",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 253.34607870900072,
+      "p95_ms": 295.8711734681856,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "local",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 291.6772556491196,
+      "p95_ms": 332.64180241167196,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "color",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 253.6277283288655,
+      "p95_ms": 282.84211757272715,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "proportion",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 247.69337102770805,
+      "p95_ms": 272.2860633948585,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "adaptive",
+      "split": "evaluation",
+      "k": 30,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 173.89071916841203,
+      "p95_ms": 191.11490239447448,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "original",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 113.74281452299329,
+      "p95_ms": 125.23136636445997,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "v2",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 173.82455801271135,
+      "p95_ms": 191.02978696173523,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "shape",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 244.51481968571898,
+      "p95_ms": 290.73532714755856,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "texture",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 253.41462405049242,
+      "p95_ms": 295.9362617402803,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "local",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 292.9117870517075,
+      "p95_ms": 334.33075962602743,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "color",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 253.57134233490797,
+      "p95_ms": 282.79514911264414,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "proportion",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 2,
+      "median_ms": 247.64687940478325,
+      "p95_ms": 272.2407638648292,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "model": "dinov2",
+      "variant": "adaptive",
+      "split": "evaluation",
+      "k": 50,
+      "queries": 2,
+      "top1": 1,
+      "top5": 1,
+      "mrr": 1,
+      "recall_at_k": 1,
+      "reranked": 0,
+      "median_ms": 174.00325273774797,
+      "p95_ms": 191.06101979559753,
+      "rss_mib": 604.86328125,
+      "ranks": [
+        {
+          "photo_id": 15,
+          "case": "hand_shelf",
+          "rank": 1
+        },
+        {
+          "photo_id": 16,
+          "case": "floor_background",
+          "rank": 1
+        }
+      ]
+    }
+  ],
+  "models": {
+    "clip": {
+      "environment": {
+        "model": "openai/clip-vit-base-patch32",
+        "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+        "platform": "Windows-11-10.0.26200-SP0",
+        "cpu": "Intel64 Family 6 Model 158 Stepping 10, GenuineIntel",
+        "threads": 2,
+        "startup_s": 14.566030599991791,
+        "parameters": 151277313,
+        "model_bytes": 605109252,
+        "dimensions": 512,
+        "rss_mib": 863.59375,
+        "peak_rss_mib": 977.296875
+      },
+      "latency_ms": {
+        "v1": {
+          "validation_ms": {
+            "median": 0.14200000000000002,
+            "p95": 0.18625
+          },
+          "decode_ms": {
+            "median": 14.841,
+            "p95": 17.292
+          },
+          "validation_decode_ms": {
+            "median": 15.003499999999999,
+            "p95": 17.422
+          },
+          "resize_ms": {
+            "median": 17.0705,
+            "p95": 25.49975
+          },
+          "grabcut_ms": {
+            "median": 900.8924999999999,
+            "p95": 1202.82925
+          },
+          "component_selection_ms": {
+            "median": 0.6825,
+            "p95": 1.26725
+          },
+          "crop_ms": {
+            "median": 7.81,
+            "p95": 10.9975
+          },
+          "normalization_ms": {
+            "median": 0.0775,
+            "p95": 0.128
+          },
+          "preprocessing_ms": {
+            "median": 927.7840000000001,
+            "p95": 1227.4772500000001
+          },
+          "embedding_ms": {
+            "median": 105.4604000019026,
+            "p95": 146.02229999945848
+          },
+          "descriptor_ms": {
+            "median": 13.443700001516845,
+            "p95": 14.134150009340374
+          },
+          "fast_total_ms": {
+            "median": 1071.5616500019678,
+            "p95": 1336.5339999982098
+          },
+          "full_total_ms": {
+            "median": 1085.6920499936678,
+            "p95": 1350.2872249991924
+          }
+        },
+        "v2": {
+          "validation_ms": {
+            "median": 0.101,
+            "p95": 0.1475
+          },
+          "decode_ms": {
+            "median": 14.8655,
+            "p95": 25.902
+          },
+          "validation_decode_ms": {
+            "median": 14.9705,
+            "p95": 26.045250000000003
+          },
+          "resize_ms": {
+            "median": 7.76,
+            "p95": 10.67825
+          },
+          "prior_ms": {
+            "median": 2.981,
+            "p95": 5.3580000000000005
+          },
+          "grabcut_ms": {
+            "median": 65.529,
+            "p95": 76.51299999999999
+          },
+          "component_selection_ms": {
+            "median": 0.5954999999999999,
+            "p95": 1.1139999999999999
+          },
+          "crop_ms": {
+            "median": 0.789,
+            "p95": 2.4775
+          },
+          "normalization_ms": {
+            "median": 0.0685,
+            "p95": 0.1445
+          },
+          "preprocessing_ms": {
+            "median": 75.4085,
+            "p95": 94.5205
+          },
+          "embedding_ms": {
+            "median": 104.11924999789335,
+            "p95": 131.71304999559652
+          },
+          "descriptor_ms": {
+            "median": 7.754800004477147,
+            "p95": 10.391900010290556
+          },
+          "fast_total_ms": {
+            "median": 185.93600000167498,
+            "p95": 244.07549999159528
+          },
+          "full_total_ms": {
+            "median": 194.10995000362163,
+            "p95": 248.61672499901033
+          }
+        },
+        "original": {
+          "validation_ms": {
+            "median": 0.1375,
+            "p95": 0.257
+          },
+          "decode_ms": {
+            "median": 13.018,
+            "p95": 15.890250000000002
+          },
+          "validation_decode_ms": {
+            "median": 13.1495,
+            "p95": 16.11975
+          },
+          "embedding_ms": {
+            "median": 106.82404999533901,
+            "p95": 140.3774749924196
+          },
+          "fast_total_ms": {
+            "median": 119.8143000001437,
+            "p95": 156.61387499494595
+          },
+          "full_total_ms": {
+            "median": 119.81525000010151,
+            "p95": 156.61499999987427
+          }
+        }
+      },
+      "manifest_sha256": "be7a9b606cee974cf6613b320088468a03827a3a733a26e0b5b2335da293676e"
+    },
+    "dinov2": {
+      "environment": {
+        "model": "facebook/dinov2-small",
+        "revision": "ed25f3a31f01632728cabb09d1542f84ab7b0056",
+        "platform": "Windows-11-10.0.26200-SP0",
+        "cpu": "Intel64 Family 6 Model 158 Stepping 10, GenuineIntel",
+        "threads": 2,
+        "startup_s": 104.58600150000711,
+        "parameters": 22056576,
+        "model_bytes": 88226304,
+        "dimensions": 384,
+        "rss_mib": 604.86328125,
+        "peak_rss_mib": 716.10546875
+      },
+      "latency_ms": {
+        "v2": {
+          "validation_ms": {
+            "median": 0.14250000000000002,
+            "p95": 0.179
+          },
+          "decode_ms": {
+            "median": 12.2635,
+            "p95": 13.6825
+          },
+          "validation_decode_ms": {
+            "median": 12.383,
+            "p95": 13.84825
+          },
+          "resize_ms": {
+            "median": 6.1585,
+            "p95": 6.675000000000001
+          },
+          "prior_ms": {
+            "median": 2.4065000000000003,
+            "p95": 2.6585
+          },
+          "grabcut_ms": {
+            "median": 53.752,
+            "p95": 68.44300000000001
+          },
+          "component_selection_ms": {
+            "median": 0.536,
+            "p95": 0.70425
+          },
+          "crop_ms": {
+            "median": 0.4615,
+            "p95": 0.97775
+          },
+          "normalization_ms": {
+            "median": 0.049,
+            "p95": 0.13725
+          },
+          "preprocessing_ms": {
+            "median": 63.2675,
+            "p95": 78.2265
+          },
+          "embedding_ms": {
+            "median": 97.48450000188313,
+            "p95": 104.35037499701139
+          },
+          "descriptor_ms": {
+            "median": 7.356649999564979,
+            "p95": 11.440074995334726
+          },
+          "fast_total_ms": {
+            "median": 173.5061500003212,
+            "p95": 190.71197499579284
+          },
+          "full_total_ms": {
+            "median": 181.74469999939902,
+            "p95": 200.8397249992413
+          }
+        },
+        "original": {
+          "validation_ms": {
+            "median": 0.19,
+            "p95": 0.30200000000000005
+          },
+          "decode_ms": {
+            "median": 10.345500000000001,
+            "p95": 11.64675
+          },
+          "validation_decode_ms": {
+            "median": 10.605,
+            "p95": 11.838
+          },
+          "embedding_ms": {
+            "median": 102.08799999963958,
+            "p95": 114.6306749942596
+          },
+          "fast_total_ms": {
+            "median": 113.41784999967786,
+            "p95": 124.90592500398634
+          },
+          "full_total_ms": {
+            "median": 113.41895000077784,
+            "p95": 124.90687500030617
+          }
+        }
+      },
+      "manifest_sha256": "be7a9b606cee974cf6613b320088468a03827a3a733a26e0b5b2335da293676e"
+    }
+  }
+}

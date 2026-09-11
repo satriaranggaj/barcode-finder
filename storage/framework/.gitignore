@@ -10,3 +10,4 @@ schedule-*
 services.json
 product-image-optimizer.lock
 products-compress-images.lock
+products-reindex-images.lock

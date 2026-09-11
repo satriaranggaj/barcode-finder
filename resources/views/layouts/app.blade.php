@@ -15,7 +15,7 @@
         <header class="sticky top-0 z-20 border-b border-[#ead9b8] bg-[#fffdf4]/95 px-5 py-4 backdrop-blur lg:px-10">
             <div class="mx-auto flex max-w-[1400px] items-center justify-between gap-6">
                 <a href="{{ route('products.index') }}" class="flex shrink-0 items-center gap-3">
-                    <img src="{{ asset('favicon_io/android-chrome-192x192.png') }}" alt="Lensku" class="h-10 w-10 rounded-xl object-cover">
+                    <img src="{{ asset('favicon_io/android-chrome-192x192.png') }}" alt="Lensku" class="h-14 w-14 rounded-xl object-cover">
                     <span><span class="block font-display text-xl font-bold tracking-tight">lensku</span><span class="hidden text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8b7355] sm:block">Barcode finder</span></span>
                 </a>
                 <nav class="hidden items-center gap-2 text-sm font-semibold md:flex">
@@ -69,6 +69,97 @@
                 @yield('content')
             </div>
         </main>
+        <footer class="border-t border-[#ead9b8] bg-[#fffdf4]">
+        <div class="mx-auto max-w-[1400px] px-5 py-8 lg:px-10">
+            <div class="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
+
+                {{-- Lensku --}}
+                <div>
+                    <div class="flex items-center gap-3">
+                        <img
+                            src="{{ asset('favicon_io/android-chrome-192x192.png') }}"
+                            alt="Lensku"
+                            class="h-14 w-14 rounded-xl object-cover"
+                        >
+
+                        <div>
+                            <p class="font-display text-lg font-bold tracking-tight">
+                                lensku
+                            </p>
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8b7355]">
+                                Barcode finder
+                            </p>
+                        </div>
+                    </div>
+
+                    <p class="mt-3 max-w-sm text-sm leading-6 text-[#765c47]">
+                        Pencarian barang berbasis gambar untuk membantu
+                        menemukan SKU dengan lebih cepat.
+                    </p>
+                </div>
+
+                {{-- Navigasi --}}
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-[#8b7355]">
+                        Navigasi
+                    </p>
+
+                    <div class="mt-3 flex flex-col items-start gap-2 text-sm font-semibold">
+                        <a
+                            href="{{ route('products.index') }}"
+                            class="text-[#765c47] transition hover:text-[#543019] "
+                        >
+                            Katalog
+                        </a>
+
+                        @auth
+                            <a
+                                href="{{ route('admin.index') }}"
+                                class="text-[#765c47] transition hover:text-[#543019]"
+                            >
+                                Admin workspace
+                            </a>
+                        @endauth
+                    </div>
+                </div>
+
+                {{-- Dukungan --}}
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.16em] text-[#8b7355]">
+                        Dukung Lensku
+                    </p>
+
+                    <p class="mt-3 max-w-sm text-sm leading-6 text-[#765c47]">
+                        Dukunganmu membantu biaya server, AI service,
+                        penyimpanan gambar, dan pengembangan Lensku.
+                    </p>
+
+                    <a
+                        href="https://saweria.co/satriaranggaj"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="mt-4 inline-flex items-center gap-2 rounded-xl
+                            bg-[#fff200] px-4 py-2.5 text-sm font-bold
+                            text-[#543019] shadow-[3px_3px_0_#543019]
+                            transition hover:-translate-y-0.5 hover:bg-[#ffc20e]"
+                    >
+                        ❤️ Dukung via Saweria
+                    </a>
+                </div>
+
+            </div>
+
+            <div class="mt-8 flex flex-col gap-2 border-t border-[#eadfca] pt-5 text-xs text-[#8b7355] sm:flex-row sm:items-center sm:justify-between">
+                <p>
+                    © {{ date('Y') }} Lensku · Developed by Satria Rangga Jati
+                </p>
+
+                <p>
+                    Dikembangkan secara independen.
+                </p>
+            </div>
+        </div>
+    </footer>
     </div>
 </body>
 </html>

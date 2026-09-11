@@ -1,0 +1,12 @@
+{
+  "dataset_note": "Replace with independently photographed, verified SKU labels. Keep tuning and held-out test sets separate.",
+  "references": [
+    {"path": "dataset/sku-a-reference.jpg", "sku": "SKU-A"},
+    {"path": "dataset/sku-a-second-design.jpg", "sku": "SKU-A"},
+    {"path": "dataset/sku-b-reference.jpg", "sku": "SKU-B"}
+  ],
+  "queries": [
+    {"path": "dataset/sku-a-hand-query.jpg", "sku": "SKU-A", "case": "hand"},
+    {"path": "dataset/sku-b-shelf-query.jpg", "sku": "SKU-B", "case": "shelf"}
+  ]
+}

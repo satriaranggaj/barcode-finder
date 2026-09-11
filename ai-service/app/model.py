@@ -1,18 +1,21 @@
 from PIL import Image
 import torch
 from transformers import CLIPProcessor, CLIPModel
+import os
 
 
 MODEL_NAME = "openai/clip-vit-base-patch32"
+MODEL_REVISION = "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.set_num_threads(max(1, min(4, int(os.environ.get("AI_CPU_THREADS", "2")))))
 
 print(f"Loading CLIP model...")
 print(f"Device: {device}")
 
-processor = CLIPProcessor.from_pretrained(MODEL_NAME)
+processor = CLIPProcessor.from_pretrained(MODEL_NAME, revision=MODEL_REVISION)
 
-model = CLIPModel.from_pretrained(MODEL_NAME)
+model = CLIPModel.from_pretrained(MODEL_NAME, revision=MODEL_REVISION)
 
 model.to(device)
 model.eval()
@@ -32,7 +35,7 @@ def create_image_embedding(image: Image.Image):
         for key, value in inputs.items()
     }
 
-    with torch.no_grad():
+    with torch.inference_mode():
 
         image_features = model.get_image_features(
             **inputs

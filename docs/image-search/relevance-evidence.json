@@ -1,0 +1,207 @@
+{
+  "schema": 1,
+  "purpose": "Labelled relevance evidence with links to local scored tuning exports",
+  "eligible_for_calibration": false,
+  "reason": "Sunglasses/lunch-box observations still lack complete query provenance and raw scores. Dumbbell queries and user-confirmed positive screwdriver labels now have local tuning exports, but no final threshold is validated.",
+  "cases": [
+    {
+      "id": "case-a-sunglasses",
+      "source": "User screenshot and confirmed labels",
+      "relevant_skus": [
+        "9056299"
+      ],
+      "observed_candidates": [
+        {
+          "sku": "9056299",
+          "label": "SUNGLASSES",
+          "relevant": true,
+          "displayed_score": 1.0
+        },
+        {
+          "sku": "9079588",
+          "label": "SCREWDRIVER",
+          "relevant": false,
+          "displayed_score": 0.77
+        },
+        {
+          "sku": "9079590",
+          "label": "SCREWDRIVER",
+          "relevant": false,
+          "displayed_score": 0.75
+        }
+      ],
+      "query_sha256": null,
+      "capture_group": null
+    },
+    {
+      "id": "case-b-lunch-box",
+      "source": "User-reported labels and displayed scores",
+      "relevant_skus": [
+        "8978322",
+        "8972198"
+      ],
+      "observed_candidates": [
+        {
+          "sku": "8978322",
+          "label": "LUNCH BOX",
+          "relevant": true,
+          "displayed_score": 1.0
+        },
+        {
+          "sku": "8972198",
+          "label": "LUNCH BOX",
+          "relevant": true,
+          "displayed_score": 0.79
+        },
+        {
+          "sku": "9079588",
+          "label": "SCREWDRIVER",
+          "relevant": false,
+          "displayed_score": 0.74
+        },
+        {
+          "sku": "9079590",
+          "label": "SCREWDRIVER",
+          "relevant": false,
+          "displayed_score": 0.72
+        }
+      ],
+      "query_sha256": null,
+      "capture_group": null
+    },
+    {
+      "id": "case-c-dumbbell-no-reference",
+      "source": "User-confirmed negative/no-match query: dumbbell has no reference image in the catalog snapshot",
+      "query_type": "negative_out_of_reference_catalog",
+      "relevant_skus": [],
+      "expected_result_count": 0,
+      "observed_candidates": null,
+      "query_sha256": null,
+      "capture_group": null,
+      "eligible_for_calibration": true,
+      "missing": [
+        "broader representative positive query coverage",
+        "independent held-out positive and negative queries"
+      ],
+      "query_examples": [
+        {
+          "query_id": "dumbbell-e0d7c4afe9f1f67d",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.39.jpeg",
+          "query_sha256": "e0d7c4afe9f1f67dc158c2bf39eb3f41f82ce0bef3e3e2d39bd49710fb7b4515",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        },
+        {
+          "query_id": "dumbbell-f10ff3eeeeb9ffff",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.36.jpeg",
+          "query_sha256": "f10ff3eeeeb9ffff93e913a0c9724502bdf2c05c360df352826426e1169d08f2",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        },
+        {
+          "query_id": "dumbbell-e445754b9bf05346",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.35.jpeg",
+          "query_sha256": "e445754b9bf05346ce2233147e02b2459bac4836ea4aa8fc4ba92c4efb31b990",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        },
+        {
+          "query_id": "dumbbell-2792352bd873c3a7",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.37.jpeg",
+          "query_sha256": "2792352bd873c3a7b53ec06282f827aad8d8ad2362867a57190144a81c991aee",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        },
+        {
+          "query_id": "dumbbell-c2094a9528b70cf5",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.17.jpeg",
+          "query_sha256": "c2094a9528b70cf52479c7c313e98d1f9d4c9dff3af696e14754a92352e81a14",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        },
+        {
+          "query_id": "dumbbell-f83f54e321e48eb3",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.16.jpeg",
+          "query_sha256": "f83f54e321e48eb34f59505859de804c11be0ccd61e54f557da446817ad78424",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        },
+        {
+          "query_id": "dumbbell-2fa46b90818b3c7c",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.15.jpeg",
+          "query_sha256": "2fa46b90818b3c7c40230d6854a397d5ccafd333bfb95750ccf16381bd7f8d49",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        },
+        {
+          "query_id": "dumbbell-fda16ec01ca77d7a",
+          "source_filename": "WhatsApp Image 2026-09-09 at 01.33.14.jpeg",
+          "query_sha256": "fda16ec01ca77d7a8d21252a607ada2ff6501366ecff15f7196558df5fbd9119",
+          "capture_group": "downloads-dumbbell-batch-20260909",
+          "capture_group_note": "Conservative grouping of all related download photos; capture sessions not independently verified",
+          "relevant_skus": [],
+          "expected_result_count": 0,
+          "assigned_split": "tuning",
+          "label_source": "User states no dumbbell reference image exists"
+        }
+      ],
+      "local_manifest": "ai-service/benchmark-output/labelled-dumbbell-20260912/manifest.json",
+      "runtime_threshold_validated": false,
+      "calibration_status": "Real tuning executed; no policy frozen/applied and no held-out validation yet",
+      "tuning_reports": {
+        "legacy": "ai-service/benchmark-output/labelled-dumbbell-20260912/legacy/tuning-report.json",
+        "object-v2": "ai-service/benchmark-output/labelled-dumbbell-20260912/object-v2/tuning-report.json"
+      },
+      "positive_query_labels": [
+        {
+          "source_filename": "WhatsApp Image 2026-09-07 at 18.58.51.jpeg",
+          "query_id": "screwdriver-floor-f2fdbd9b447dab04",
+          "query_sha256": "f2fdbd9b447dab04ba3b72b56e291435e6758bff5d8fad8f61698b1a16ec2b20",
+          "capture_group": "screwdrivers-floor-download-batch-20260907",
+          "relevant_skus": [
+            "9079590"
+          ],
+          "label_status": "confirmed by user on 2026-09-12"
+        },
+        {
+          "source_filename": "WhatsApp Image 2026-09-07 at 18.58.39.jpeg",
+          "query_id": "screwdriver-floor-cb731afc3c178b73",
+          "query_sha256": "cb731afc3c178b734209ff485cfd033e9be84fc504ed8ba0b860cb5b765ae09a",
+          "capture_group": "screwdrivers-floor-download-batch-20260907",
+          "relevant_skus": [
+            "9079588"
+          ],
+          "label_status": "confirmed by user on 2026-09-12"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+-r requirements-dev.txt
+# Alternative image tower evaluation only; never needed by production service.
+timm==1.0.29

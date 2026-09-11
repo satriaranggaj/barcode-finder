@@ -1,0 +1,21 @@
+{
+  "model": "openai/clip-vit-base-patch32",
+  "model_revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+  "preprocessing_version": "object-v2",
+  "k": 20,
+  "ef_search": 100,
+  "confidence_similarity": 0.9,
+  "confidence_margin": 0.08,
+  "descriptor_weights": {
+    "global": 1,
+    "shape": 0,
+    "color": 0,
+    "texture": 0,
+    "local": 0,
+    "proportion": 0
+  },
+  "catalog_sha256": "24495dad47c8dc484c8a794c9733c11e22331e2522049b88b35a2878fc526404",
+  "latency_scope": "SYNTHETIC FIXTURE ONLY, not measured performance",
+  "result_limit": 12,
+  "synthetic_fixture": true
+}

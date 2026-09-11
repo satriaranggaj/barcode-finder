@@ -1,0 +1,236 @@
+{
+    "dataset_note": "DIAGNOSTIC ONLY: 8 local photos, synthetic brightness\/rotation queries; fixture labels are image identity, not verified SKUs. Not held-out production accuracy.",
+    "environment": {
+        "platform": "Windows-11-10.0.26200-SP0",
+        "processor": "Intel64 Family 6 Model 158 Stepping 10, GenuineIntel",
+        "startup_s": 14.177976500010118,
+        "model_bytes": 605109252,
+        "rss_mib_after": 885.609375,
+        "peak_working_set_mib": 907.2265625
+    },
+    "latency_ms": {
+        "old": {
+            "validation_decode_ms": {
+                "median": 9.836500000000001,
+                "max": 13.136
+            },
+            "embedding_ms": {
+                "median": 80.119,
+                "max": 98.935
+            },
+            "total_ms": {
+                "median": 90.684,
+                "max": 110.537
+            }
+        },
+        "new": {
+            "validation_decode_ms": {
+                "median": 11.003499999999999,
+                "max": 14.176
+            },
+            "embedding_ms": {
+                "median": 77.81899999999999,
+                "max": 83.475
+            },
+            "descriptor_ms": {
+                "median": 10.2785,
+                "max": 13.994
+            },
+            "total_ms": {
+                "median": 580.348,
+                "max": 1314.063
+            },
+            "preprocessing_ms": {
+                "median": 482.44100000000003,
+                "max": 1212.906
+            }
+        }
+    },
+    "weights": {
+        "global": 1,
+        "shape": 0,
+        "color": 0,
+        "texture": 0,
+        "local": 0,
+        "proportion": 0
+    },
+    "retrieval": "Offline exact cosine, NOT pgvector. Database latency\/ANN recall needs PostgreSQL validation.",
+    "runs": [
+        {
+            "mode": "old",
+            "k": 30,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.29584765434265137,
+            "reranking_mean_ms": 0.033661723136901855,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        },
+        {
+            "mode": "old",
+            "k": 50,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.24524331092834473,
+            "reranking_mean_ms": 0.027820467948913574,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        },
+        {
+            "mode": "old",
+            "k": 75,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.24515390396118164,
+            "reranking_mean_ms": 0.027418136596679688,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        },
+        {
+            "mode": "old",
+            "k": 100,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.25027990341186523,
+            "reranking_mean_ms": 0.028252601623535156,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        },
+        {
+            "mode": "new",
+            "k": 30,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.27583539485931396,
+            "reranking_mean_ms": 0.04024803638458252,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        },
+        {
+            "mode": "new",
+            "k": 50,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.24464726448059082,
+            "reranking_mean_ms": 0.03409385681152344,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        },
+        {
+            "mode": "new",
+            "k": 75,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.2633035182952881,
+            "reranking_mean_ms": 0.03890693187713623,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        },
+        {
+            "mode": "new",
+            "k": 100,
+            "queries": 16,
+            "top1": 0.875,
+            "top5": 1,
+            "top10": 1,
+            "recall_at_k": 1,
+            "mrr_at_k": 0.9375,
+            "offline_exact_mean_ms": 0.26138126850128174,
+            "reranking_mean_ms": 0.03826618194580078,
+            "cases": {
+                "brightness": {
+                    "queries": 8,
+                    "top1_hits": 7
+                },
+                "rotation": {
+                    "queries": 8,
+                    "top1_hits": 7
+                }
+            }
+        }
+    ]
+}

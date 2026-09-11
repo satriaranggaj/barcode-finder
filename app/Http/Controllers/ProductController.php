@@ -5,13 +5,15 @@ namespace App\Http\Controllers;
 use App\Imports\ProductsImport;
 use App\Models\Product;
 use App\Models\ProductPhoto;
+use App\Services\ImageFeatureClient;
+use App\Services\ImageSearch;
 use App\Services\ProductImageOptimizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Maatwebsite\Excel\Facades\Excel;
@@ -145,6 +147,7 @@ class ProductController extends Controller
 
         $storedPaths = [];
         $photos = [];
+        $features = [];
         try {
             foreach ($validated['images'] as $image) {
                 $prepared = $optimizer->prepare($image->getRealPath(), config('product_images.quality'), config('product_images.optimize_uploads'));
@@ -153,6 +156,15 @@ class ProductController extends Controller
                     $embedding = $this->createEmbedding($image);
                     $photoPath = $optimizer->store($prepared);
                     $storedPaths[] = $photoPath;
+                    $feature = null;
+                    if (config('image_search.index_uploads') || config('image_search.pipeline') === ImageFeatureClient::VERSION) {
+                        try {
+                            $feature = [app(ImageFeatureClient::class)->extract($prepared->file), hash_file('sha256', $prepared->file)];
+                        } catch (\Throwable $error) {
+                            Log::warning('image_features_pending', ['exception' => $error::class]);
+                        }
+                    }
+                    $features[] = $feature;
                     $photos[] = [
                         'product_id' => $product->id,
                         'path' => $photoPath,
@@ -164,9 +176,12 @@ class ProductController extends Controller
                     $prepared->cleanup();
                 }
             }
-            DB::transaction(function () use ($photos): void {
-                foreach ($photos as $photo) {
-                    ProductPhoto::create($photo);
+            DB::transaction(function () use ($photos, $features): void {
+                foreach ($photos as $index => $photo) {
+                    $created = ProductPhoto::create($photo);
+                    if ($features[$index] !== null) {
+                        app(ImageFeatureClient::class)->store($created->id, $photo['path'], $features[$index][1], $features[$index][0]);
+                    }
                 }
             });
         } catch (\Throwable $exception) {
@@ -194,13 +209,33 @@ class ProductController extends Controller
 
     public function search(Request $request): View
     {
+        $started = microtime(true);
         $request->validate([
             'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
         try {
+            if (config('image_search.pipeline') === ImageFeatureClient::VERSION && ! app(ImageFeatureClient::class)->pending()->exists()) {
+                try {
+                    $features = app(ImageFeatureClient::class)->extract($request->file('image')->getRealPath(), false);
+                    $results = app(ImageSearch::class)->search($features['embedding'], $features,
+                        fn (array $signals) => app(ImageFeatureClient::class)->descriptors($request->file('image')->getRealPath(), $signals));
+                    Log::info('image_search_request', ['pipeline' => ImageFeatureClient::VERSION,
+                        'mode' => $features['preprocessing']['mode'] ?? 'unknown',
+                        'server_processing_ms' => round((microtime(true) - $started) * 1000, 2)]);
+
+                    return view('products.search', [
+                        'results' => $results,
+                        'error' => null,
+                    ]);
+                } catch (\Throwable $error) {
+                    Log::warning('image_search_legacy_fallback', ['exception' => $error::class]);
+                }
+            }
             $embedding = $this->createEmbedding($request->file('image'));
-            $results = $this->findSimilarProducts($embedding);
+            $results = app(ImageSearch::class)->search($embedding);
+            Log::info('image_search_request', ['pipeline' => 'legacy',
+                'server_processing_ms' => round((microtime(true) - $started) * 1000, 2)]);
         } catch (\Throwable $exception) {
             return view('products.search', [
                 'results' => collect(),
@@ -231,57 +266,5 @@ class ProductController extends Controller
                 fclose($stream);
             }
         }
-    }
-
-    private function findSimilarProducts(array $embedding): Collection
-    {
-        $vector = '['.implode(',', $embedding).']';
-        $minimumSimilarity = (float) config('services.ai.search_min_similarity', 0.72);
-
-        if (config('database.default') === 'pgsql') {
-            return Product::query()
-                ->join('product_photos', 'product_photos.product_id', '=', 'products.id')
-                ->whereNotNull('product_photos.embedding')
-                ->selectRaw('products.*, product_photos.path AS photo, 1 - (product_photos.embedding <=> CAST(? AS vector)) AS similarity', [$vector])
-                ->whereRaw('1 - (product_photos.embedding <=> CAST(? AS vector)) >= ?', [$vector, $minimumSimilarity])
-                ->orderByRaw('product_photos.embedding <=> CAST(? AS vector)', [$vector])
-                ->limit(12)
-                ->get();
-        }
-
-        return Product::query()
-            ->join('product_photos', 'product_photos.product_id', '=', 'products.id')
-            ->whereNotNull('product_photos.embedding')
-            ->select('products.*', 'product_photos.path as photo', 'product_photos.embedding as photo_embedding')
-            ->get()
-            ->map(function (Product $product) use ($embedding): Product {
-                $storedEmbedding = trim((string) $product->photo_embedding, '[]');
-                $values = array_map('floatval', $storedEmbedding === '' ? [] : explode(',', $storedEmbedding));
-                $product->similarity = $this->cosineSimilarity($embedding, $values);
-
-                return $product;
-            })
-            ->filter(fn (Product $product): bool => $product->similarity >= $minimumSimilarity)
-            ->sortByDesc('similarity')
-            ->take(12)
-            ->values();
-    }
-
-    private function cosineSimilarity(array $left, array $right): float
-    {
-        $dot = 0.0;
-        $leftLength = 0.0;
-        $rightLength = 0.0;
-
-        foreach ($left as $index => $value) {
-            $other = $right[$index] ?? 0.0;
-            $dot += $value * $other;
-            $leftLength += $value * $value;
-            $rightLength += $other * $other;
-        }
-
-        return $leftLength && $rightLength
-            ? $dot / (sqrt($leftLength) * sqrt($rightLength))
-            : 0.0;
     }
 }
