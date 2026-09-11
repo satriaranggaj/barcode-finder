@@ -11,6 +11,8 @@ class ProductPhoto extends Model
         'product_id',
         'path',
         'embedding',
+        'storage_optimized_at',
+        'storage_optimization',
     ];
 
     public function product(): BelongsTo

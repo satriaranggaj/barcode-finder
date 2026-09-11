@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Imports\ProductsImport;
 use App\Models\Product;
 use App\Models\ProductPhoto;
+use App\Services\ProductImageOptimizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
@@ -134,27 +136,47 @@ class ProductController extends Controller
         return view('products.show', compact('product'));
     }
 
-    public function uploadPhoto(Request $request, Product $product): RedirectResponse
+    public function uploadPhoto(Request $request, Product $product, ProductImageOptimizer $optimizer): RedirectResponse
     {
         $validated = $request->validate([
-            'images' => ['required', 'array', 'min:1'],
-            'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'images' => ['required', 'array', 'min:1', 'max:'.config('product_images.max_uploads')],
+            'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'extensions:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
+        $storedPaths = [];
+        $photos = [];
         try {
             foreach ($validated['images'] as $image) {
-                $embedding = $this->createEmbedding($image);
-                $photoPath = $image->store('products', 'public');
-
-                ProductPhoto::create([
-                    'product_id' => $product->id,
-                    'path' => $photoPath,
-                    'embedding' => '['.implode(',', $embedding).']',
-                ]);
+                $prepared = $optimizer->prepare($image->getRealPath(), config('product_images.quality'), config('product_images.optimize_uploads'));
+                try {
+                    // Phase 1 changes storage only; embedding keeps the existing input pipeline.
+                    $embedding = $this->createEmbedding($image);
+                    $photoPath = $optimizer->store($prepared);
+                    $storedPaths[] = $photoPath;
+                    $photos[] = [
+                        'product_id' => $product->id,
+                        'path' => $photoPath,
+                        'embedding' => '['.implode(',', $embedding).']',
+                        'storage_optimized_at' => config('product_images.optimize_uploads') ? now() : null,
+                        'storage_optimization' => $prepared->reason,
+                    ];
+                } finally {
+                    $prepared->cleanup();
+                }
             }
+            DB::transaction(function () use ($photos): void {
+                foreach ($photos as $photo) {
+                    ProductPhoto::create($photo);
+                }
+            });
         } catch (\Throwable $exception) {
+            foreach ($storedPaths as $path) {
+                $optimizer->discardUnreferenced($path);
+            }
+            report($exception);
+
             return back()->withInput()->withErrors([
-                'images' => 'Foto belum disimpan karena layanan pencarian gambar sedang tidak tersedia.',
+                'images' => 'Foto belum disimpan. Pastikan gambar valid dan dimensinya sesuai batas pemrosesan; periksa penyimpanan serta layanan pencarian gambar.',
             ]);
         }
 
@@ -194,14 +216,21 @@ class ProductController extends Controller
 
     private function createEmbedding(mixed $image): array
     {
-        $response = Http::timeout(45)
-            ->retry(2, 250)
-            ->attach('image', fopen($image->getRealPath(), 'r'), $image->getClientOriginalName())
-            ->post(rtrim((string) config('services.ai.url'), '/').'/embed');
+        $stream = fopen($image->getRealPath(), 'rb');
+        try {
+            $response = Http::timeout(45)
+                ->retry(2, 250)
+                ->attach('image', $stream, $image->getClientOriginalName())
+                ->post(rtrim((string) config('services.ai.url'), '/').'/embed');
 
-        $response->throw();
+            $response->throw();
 
-        return $response->json('embedding');
+            return $response->json('embedding');
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
     }
 
     private function findSimilarProducts(array $embedding): Collection
