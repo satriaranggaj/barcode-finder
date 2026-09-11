@@ -11,12 +11,33 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tests\Concerns\CreatesProductImages;
 use Tests\TestCase;
 
 class CompressProductImagesTest extends TestCase
 {
     use CreatesProductImages, RefreshDatabase;
+
+    #[TestWith(['memory_budget_mb', 1, 'preserved_memory_budget'])]
+    #[TestWith(['max_pixels', 100, 'preserved_pixel_limit'])]
+    public function test_processing_limits_skip_without_failing_or_reembedding(string $setting, int $limit, string $reason): void
+    {
+        Storage::fake('public');
+        Http::preventStrayRequests();
+        config(['product_images.'.$setting => $limit]);
+        $photo = $this->photo();
+        $original = Storage::disk('public')->get($photo->path);
+
+        $this->artisan('products:compress-images', ['--sleep' => 0])
+            ->expectsOutputToContain('Processed: 0 | Skipped: 1 | Failed: 0')->assertSuccessful();
+
+        $this->assertSame($photo->path, $photo->fresh()->path);
+        $this->assertSame($reason, $photo->fresh()->storage_optimization);
+        $this->assertSame($original, Storage::disk('public')->get($photo->path));
+        $this->assertSame($photo->embedding, $photo->fresh()->embedding);
+        Http::assertNothingSent();
+    }
 
     private function photo(string $path = 'products/original.jpg'): ProductPhoto
     {

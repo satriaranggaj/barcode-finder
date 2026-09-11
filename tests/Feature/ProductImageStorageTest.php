@@ -89,20 +89,29 @@ class ProductImageStorageTest extends TestCase
         $this->assertSame($image->getRealPath(), $prepared->file);
     }
 
-    public function test_pixel_limit_rejects_image_before_ai_or_storage(): void
+    #[TestWith(['max_pixels', 100, 'preserved_pixel_limit', 'jpg'])]
+    #[TestWith(['memory_budget_mb', 1, 'preserved_memory_budget', 'jpg'])]
+    #[TestWith(['memory_budget_mb', 1, 'preserved_memory_budget', 'png'])]
+    #[TestWith(['memory_budget_mb', 1, 'preserved_memory_budget', 'webp'])]
+    public function test_processing_guard_preserves_original_and_allows_embedding(string $setting, int $limit, string $reason, string $extension): void
     {
         Storage::fake('public');
         Http::preventStrayRequests();
-        config(['product_images.max_pixels' => 100]);
+        Http::fake([config('services.ai.url').'/embed' => Http::response(['embedding' => [0.1, 0.2]])]);
+        config(['product_images.'.$setting => $limit]);
         $product = Product::create(['sku' => 'LIMIT']);
+        $image = $this->productImage('photo.'.$extension);
+        $original = file_get_contents($image->getRealPath());
 
         $this->actingAs(User::factory()->create(['role' => 'admin']))
-            ->post(route('admin.products.photo.store', $product), ['images' => [$this->productImage()]])
-            ->assertSessionHasErrors('images');
+            ->post(route('admin.products.photo.store', $product), ['images' => [$image]])
+            ->assertRedirect(route('admin.products.show', $product))->assertSessionHasNoErrors();
 
-        $this->assertDatabaseCount('product_photos', 0);
-        $this->assertSame([], Storage::disk('public')->allFiles());
-        Http::assertNothingSent();
+        $photo = $product->photos()->sole();
+        $this->assertSame($reason, $photo->storage_optimization);
+        $this->assertSame($original, Storage::disk('public')->get($photo->path));
+        $this->assertSame('[0.1,0.2]', $photo->embedding);
+        Http::assertSentCount(1);
     }
 
     public function test_failed_second_image_leaves_no_partial_batch(): void
@@ -110,11 +119,12 @@ class ProductImageStorageTest extends TestCase
         Storage::fake('public');
         Http::preventStrayRequests();
         Http::fake([config('services.ai.url').'/embed' => Http::response(['embedding' => [0.1, 0.2]])]);
-        config(['product_images.max_pixels' => 80000]);
         $product = Product::create(['sku' => 'ATOMIC']);
+        $content = $this->productImageBytes();
+        $corrupt = UploadedFile::fake()->createWithContent('corrupt.jpg', substr($content, 0, (int) (strlen($content) * 0.8)));
 
         $this->actingAs(User::factory()->create(['role' => 'admin']))
-            ->post(route('admin.products.photo.store', $product), ['images' => [$this->productImage(), $this->productImage('large.jpg', 400, 400)]])
+            ->post(route('admin.products.photo.store', $product), ['images' => [$this->productImage(), $corrupt]])
             ->assertSessionHasErrors('images');
 
         $this->assertDatabaseCount('product_photos', 0);
@@ -165,8 +175,61 @@ class ProductImageStorageTest extends TestCase
         config(['product_images.memory_budget_mb' => 1]);
         $image = $this->productImage();
 
-        $this->expectExceptionMessage('Dimensi gambar melampaui batas pixel atau anggaran memori.');
-        app(ProductImageOptimizer::class)->prepare($image->getRealPath(), 88);
+        $prepared = app(ProductImageOptimizer::class)->prepare($image->getRealPath(), 88);
+        $this->assertSame('preserved_memory_budget', $prepared->reason);
+        $this->assertSame($image->getRealPath(), $prepared->file);
+        $this->assertFalse($prepared->temporary);
+    }
+
+    #[TestWith(['jpg'])]
+    #[TestWith(['png'])]
+    #[TestWith(['webp'])]
+    public function test_guard_does_not_allow_truncated_images(string $extension): void
+    {
+        Storage::fake('public');
+        Http::preventStrayRequests();
+        config(['product_images.memory_budget_mb' => 1]);
+        $image = $this->productImage('original.'.$extension);
+        $bytes = file_get_contents($image->getRealPath());
+        $corrupt = UploadedFile::fake()->createWithContent('broken.'.$extension, substr($bytes, 0, (int) (strlen($bytes) * 0.8)));
+        $product = Product::create(['sku' => 'CORRUPT']);
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->post(route('admin.products.photo.store', $product), ['images' => [$corrupt]])
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseCount('product_photos', 0);
+        $this->assertSame([], Storage::disk('public')->allFiles());
+        Http::assertNothingSent();
+    }
+
+    public function test_processing_fallback_still_enforces_actual_upload_size(): void
+    {
+        Storage::fake('public');
+        Http::preventStrayRequests();
+        config(['product_images.memory_budget_mb' => 1]);
+        $image = $this->productImage()->size(10241);
+        $product = Product::create(['sku' => 'TOO-MANY-BYTES']);
+
+        $this->actingAs(User::factory()->create(['role' => 'admin']))
+            ->post(route('admin.products.photo.store', $product), ['images' => [$image]])
+            ->assertSessionHasErrors('images.0');
+
+        $this->assertDatabaseCount('product_photos', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_guard_rejects_png_with_broken_checksum(): void
+    {
+        config(['product_images.memory_budget_mb' => 1]);
+        $image = $this->productImage('photo.png');
+        $bytes = file_get_contents($image->getRealPath());
+        $offset = strpos($bytes, 'IDAT') + 4;
+        $bytes[$offset] = chr(ord($bytes[$offset]) ^ 1);
+        $broken = UploadedFile::fake()->createWithContent('broken.png', $bytes);
+
+        $this->expectException(RuntimeException::class);
+        app(ProductImageOptimizer::class)->prepare($broken->getRealPath(), 88);
     }
 
     public function test_transparent_png_keeps_alpha_and_dimensions(): void

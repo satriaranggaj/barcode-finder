@@ -73,8 +73,18 @@ class ProductImageOptimizer
         if ($memoryLimit > 0) {
             $budget = min($budget, $memoryLimit);
         }
-        if ($pixels < 1 || $pixels > config('product_images.max_pixels') || $estimatedBytes + memory_get_usage(true) > $budget) {
-            throw new RuntimeException('Dimensi gambar melampaui batas pixel atau anggaran memori.');
+        if ($pixels < 1) {
+            throw new RuntimeException('Dimensi gambar tidak valid.');
+        }
+        $guardReason = match (true) {
+            $pixels > config('product_images.max_pixels') => 'preserved_pixel_limit',
+            $estimatedBytes + memory_get_usage(true) > $budget => 'preserved_memory_budget',
+            default => null,
+        };
+        if ($guardReason !== null) {
+            app(ImageContainerValidator::class)->validate($source, $extension);
+
+            return new PreparedProductImage($source, $extension, $guardReason, $bytes, $bytes);
         }
 
         $image = $this->decode($source, $extension);
