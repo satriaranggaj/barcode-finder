@@ -1,3 +1,7 @@
+import { installImageCompression } from './image-compression';
+
+installImageCompression();
+
 /*
 |--------------------------------------------------------------------------
 | PHOTO PICKER - KAMERA / GALERI
@@ -92,7 +96,7 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 */
 
 document.querySelectorAll('[data-image-preview]').forEach((input) => {
-	input.addEventListener('change', () => {
+	input.addEventListener('image:prepared', () => {
 		const file = input.files?.[0];
 		const preview = document.getElementById(input.dataset.previewTarget);
 		const image = preview?.querySelector('[data-preview-image]');
@@ -108,7 +112,8 @@ document.querySelectorAll('[data-image-preview]').forEach((input) => {
 			return;
 		}
 
-		if (image) {
+			if (image) {
+				if (image.src.startsWith('blob:')) URL.revokeObjectURL(image.src);
 			image.src = URL.createObjectURL(file);
 		}
 

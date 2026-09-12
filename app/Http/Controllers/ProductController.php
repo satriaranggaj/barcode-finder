@@ -5,11 +5,12 @@ namespace App\Http\Controllers;
 use App\Imports\ProductsImport;
 use App\Models\Product;
 use App\Models\ProductPhoto;
+use App\Services\VisualRepresentation;
+use App\Services\VisualSearch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Maatwebsite\Excel\Facades\Excel;
@@ -137,25 +138,28 @@ class ProductController extends Controller
     public function uploadPhoto(Request $request, Product $product): RedirectResponse
     {
         $validated = $request->validate([
-            'images' => ['required', 'array', 'min:1'],
+            'images' => ['required', 'array', 'min:1', 'max:10'],
             'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
         ]);
 
-        try {
-            foreach ($validated['images'] as $image) {
-                $embedding = $this->createEmbedding($image);
-                $photoPath = $image->store('products', 'public');
-
-                ProductPhoto::create([
-                    'product_id' => $product->id,
-                    'path' => $photoPath,
-                    'embedding' => '['.implode(',', $embedding).']',
-                ]);
+        $pending = 0;
+        foreach ($validated['images'] as $image) {
+            $photoPath = $image->store('products', 'public');
+            try {
+                $photo = ProductPhoto::create(['product_id' => $product->id, 'path' => $photoPath]);
+            } catch (\Throwable $exception) {
+                Storage::disk('public')->delete($photoPath);
+                throw $exception;
             }
-        } catch (\Throwable $exception) {
-            return back()->withInput()->withErrors([
-                'images' => 'Foto belum disimpan karena layanan pencarian gambar sedang tidak tersedia.',
-            ]);
+            try {
+                app(VisualRepresentation::class)->index($photo);
+            } catch (\Throwable $exception) {
+                $pending++;
+                Log::warning('visual_index_pending', ['photo_id' => $photo->id, 'exception' => $exception::class]);
+            }
+        }
+        if ($pending) {
+            return to_route('admin.products.show', $product)->with('success', count($validated['images']).' foto disimpan. '.$pending.' foto menunggu pengindeksan ulang.');
         }
 
         return to_route('admin.products.show', $product)->with('success', count($validated['images']).' design foto SKU berhasil ditambahkan.');
@@ -177,9 +181,11 @@ class ProductController extends Controller
         ]);
 
         try {
-            $embedding = $this->createEmbedding($request->file('image'));
-            $results = $this->findSimilarProducts($embedding);
+            $representation = app(VisualRepresentation::class)->extract($request->file('image')->getRealPath());
+            $results = app(VisualSearch::class)->search($representation);
         } catch (\Throwable $exception) {
+            Log::warning('visual_search_failure', ['exception' => $exception::class]);
+
             return view('products.search', [
                 'results' => collect(),
                 'error' => 'Pencarian belum dapat dilakukan. Pastikan layanan AI sedang berjalan.',
@@ -190,69 +196,5 @@ class ProductController extends Controller
             'results' => $results,
             'error' => null,
         ]);
-    }
-
-    private function createEmbedding(mixed $image): array
-    {
-        $response = Http::timeout(45)
-            ->retry(2, 250)
-            ->attach('image', fopen($image->getRealPath(), 'r'), $image->getClientOriginalName())
-            ->post(rtrim((string) config('services.ai.url'), '/').'/embed');
-
-        $response->throw();
-
-        return $response->json('embedding');
-    }
-
-    private function findSimilarProducts(array $embedding): Collection
-    {
-        $vector = '['.implode(',', $embedding).']';
-        $minimumSimilarity = (float) config('services.ai.search_min_similarity', 0.72);
-
-        if (config('database.default') === 'pgsql') {
-            return Product::query()
-                ->join('product_photos', 'product_photos.product_id', '=', 'products.id')
-                ->whereNotNull('product_photos.embedding')
-                ->selectRaw('products.*, product_photos.path AS photo, 1 - (product_photos.embedding <=> CAST(? AS vector)) AS similarity', [$vector])
-                ->whereRaw('1 - (product_photos.embedding <=> CAST(? AS vector)) >= ?', [$vector, $minimumSimilarity])
-                ->orderByRaw('product_photos.embedding <=> CAST(? AS vector)', [$vector])
-                ->limit(12)
-                ->get();
-        }
-
-        return Product::query()
-            ->join('product_photos', 'product_photos.product_id', '=', 'products.id')
-            ->whereNotNull('product_photos.embedding')
-            ->select('products.*', 'product_photos.path as photo', 'product_photos.embedding as photo_embedding')
-            ->get()
-            ->map(function (Product $product) use ($embedding): Product {
-                $storedEmbedding = trim((string) $product->photo_embedding, '[]');
-                $values = array_map('floatval', $storedEmbedding === '' ? [] : explode(',', $storedEmbedding));
-                $product->similarity = $this->cosineSimilarity($embedding, $values);
-
-                return $product;
-            })
-            ->filter(fn (Product $product): bool => $product->similarity >= $minimumSimilarity)
-            ->sortByDesc('similarity')
-            ->take(12)
-            ->values();
-    }
-
-    private function cosineSimilarity(array $left, array $right): float
-    {
-        $dot = 0.0;
-        $leftLength = 0.0;
-        $rightLength = 0.0;
-
-        foreach ($left as $index => $value) {
-            $other = $right[$index] ?? 0.0;
-            $dot += $value * $other;
-            $leftLength += $value * $value;
-            $rightLength += $other * $other;
-        }
-
-        return $leftLength && $rightLength
-            ? $dot / (sqrt($leftLength) * sqrt($rightLength))
-            : 0.0;
     }
 }

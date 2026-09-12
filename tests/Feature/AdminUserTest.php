@@ -145,7 +145,7 @@ class AdminUserTest extends TestCase
     {
         Storage::fake('public');
         Http::preventStrayRequests();
-        Http::fake([rtrim(config('services.ai.url'), '/').'/embed' => Http::response(['embedding' => [0.1, 0.2]])]);
+        Http::fake([rtrim(config('services.ai.url'), '/').'/features' => Http::response(VisualSearchTest::representation())]);
         $admin = User::factory()->create(['role' => 'admin']);
         $product = Product::create(['sku' => 'UPLOAD-1']);
         $existing = $product->photos()->create(['path' => 'products/existing.jpg']);
