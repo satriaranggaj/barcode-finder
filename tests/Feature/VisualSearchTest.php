@@ -30,14 +30,11 @@ class VisualSearchTest extends TestCase
 
     private function stubSearch(array $rows): void
     {
+        config(['visual_search.policy_path' => storage_path('app/missing-policy-test.json'),
+            'visual_search.threshold' => .8, 'visual_search.min_margin' => .04]);
         $this->app->instance(VisualSearch::class, new class($rows) extends VisualSearch
         {
             public function __construct(private array $rows) {}
-
-            public function policy(): array
-            {
-                return ['threshold' => .8];
-            }
 
             public function candidates(array $query): Collection
             {
@@ -64,7 +61,7 @@ class VisualSearchTest extends TestCase
     {
         $product = Product::create(['sku' => 'MATCH']);
         $features = json_encode(self::representation()['features']);
-        $this->stubSearch([(object) ['product_id' => $product->id, 'path' => 'first.jpg', 'similarity' => .85, 'features' => $features],
+        $this->stubSearch([(object) ['product_id' => $product->id, 'path' => 'first.jpg', 'similarity' => .949, 'features' => $features],
             (object) ['product_id' => $product->id, 'path' => 'second.jpg', 'similarity' => .95, 'features' => $features]]);
         $this->post('/search', ['image' => UploadedFile::fake()->image('query.webp')])
             ->assertViewHas('results', fn ($results) => $results->count() === 1 && $results[0]->photo === 'second.jpg');
@@ -125,11 +122,14 @@ class VisualSearchTest extends TestCase
         (new VisualSearch)->candidates(self::representation());
     }
 
-    public function test_missing_policy_is_technical_failure_not_an_arbitrary_threshold(): void
+    public function test_missing_policy_uses_config_and_search_still_returns_a_match(): void
     {
-        config(['visual_search.policy_path' => storage_path('app/missing-policy-test.json')]);
-        $this->expectException(\RuntimeException::class);
-        (new VisualSearch)->policy();
+        $product = Product::create(['sku' => 'NO-POLICY']);
+        $this->stubSearch([(object) ['product_id' => $product->id, 'path' => 'match.jpg', 'similarity' => .9,
+            'features' => json_encode(self::representation()['features'])]]);
+        $this->assertSame(['pipeline' => 'lensku-object-1', 'threshold' => .8, 'min_margin' => .04], (new VisualSearch)->policy());
+        $this->post('/search', ['image' => UploadedFile::fake()->image('query.jpg')])
+            ->assertViewHas('error', null)->assertViewHas('results', fn ($results) => $results->count() === 1);
     }
 
     public function test_oversized_post_returns_a_clear_error_before_session_middleware(): void
@@ -138,17 +138,80 @@ class VisualSearchTest extends TestCase
             ->assertStatus(413)->assertSee('Total foto melebihi batas upload server');
     }
 
-    public function test_policy_from_another_pipeline_is_rejected(): void
+    public function test_invalid_or_incompatible_policy_falls_back_to_config(): void
     {
         $path = tempnam(sys_get_temp_dir(), 'policy-');
-        file_put_contents($path, json_encode(['pipeline' => 'old', 'threshold' => .8, 'positive_queries' => 1, 'negative_queries' => 1]));
-        config(['visual_search.policy_path' => $path]);
+        config(['visual_search.policy_path' => $path, 'visual_search.threshold' => .72, 'visual_search.min_margin' => .04]);
         try {
-            $this->expectException(\RuntimeException::class);
-            (new VisualSearch)->policy();
+            foreach (['{broken', 'null', '"scalar"', '{"pipeline":"old","threshold":0.99}', '{}'] as $json) {
+                file_put_contents($path, $json);
+                $this->assertSame(['pipeline' => 'lensku-object-1', 'threshold' => .72, 'min_margin' => .04], (new VisualSearch)->policy());
+            }
         } finally {
             unlink($path);
         }
+    }
+
+    public function test_policy_only_needs_global_parameters_and_falls_back_per_field(): void
+    {
+        $path = tempnam(sys_get_temp_dir(), 'policy-');
+        config(['visual_search.policy_path' => $path, 'visual_search.threshold' => .72, 'visual_search.min_margin' => .04]);
+        try {
+            foreach ([
+                [['threshold' => '0.81', 'min_margin' => '0.06'], .81, .06],
+                [['threshold' => .81], .81, .04],
+                [['min_margin' => .06], .72, .06],
+                [['threshold' => 'invalid', 'min_margin' => []], .72, .04],
+            ] as [$overrides, $threshold, $margin]) {
+                file_put_contents($path, json_encode(['pipeline' => 'lensku-object-1'] + $overrides));
+                $this->assertSame(['pipeline' => 'lensku-object-1', 'threshold' => $threshold, 'min_margin' => $margin], (new VisualSearch)->policy());
+            }
+        } finally {
+            unlink($path);
+        }
+    }
+
+    public function test_score_uses_two_strongest_signals_despite_changed_viewpoint(): void
+    {
+        $query = self::representation()['features'];
+        $reference = $query;
+        $reference['pattern'] = array_reverse($reference['pattern']);
+        $reference['shape'] = [.9, .5];
+        $search = new VisualSearch;
+        $this->assertEqualsWithDelta(.85, $search->score(.8, $query, $reference), .000001);
+        $this->assertSame(.8, $search->score(.8, [], []));
+        $this->assertEqualsWithDelta(.85, $search->score(.8, ['color' => [1, 0]], ['color' => [1, 0]]), .000001);
+    }
+
+    public function test_close_different_products_are_rejected_without_legacy_fallback(): void
+    {
+        $first = Product::create(['sku' => 'AMBIGUOUS-A']);
+        $second = Product::create(['sku' => 'AMBIGUOUS-B']);
+        $features = json_encode(self::representation()['features']);
+        $this->stubSearch([(object) ['product_id' => $first->id, 'path' => 'first.jpg', 'similarity' => .95, 'features' => $features],
+            (object) ['product_id' => $second->id, 'path' => 'second.jpg', 'similarity' => .94, 'features' => $features]]);
+        $this->post('/search', ['image' => UploadedFile::fake()->image('query.jpg')])
+            ->assertViewHas('error', null)->assertViewHas('results', fn ($results) => $results->isEmpty())
+            ->assertSee('Tidak ditemukan barang yang cukup mirip');
+        Http::assertSentCount(1);
+    }
+
+    public function test_strong_distinct_match_passes_threshold_and_margin(): void
+    {
+        $first = Product::create(['sku' => 'STRONG-A']);
+        $second = Product::create(['sku' => 'STRONG-B']);
+        $features = json_encode(self::representation()['features']);
+        $this->stubSearch([(object) ['product_id' => $second->id, 'path' => 'second.jpg', 'similarity' => .70, 'features' => $features],
+            (object) ['product_id' => $first->id, 'path' => 'first.jpg', 'similarity' => .95, 'features' => $features]]);
+        $this->post('/search', ['image' => UploadedFile::fake()->image('query.jpg')])
+            ->assertViewHas('error', null)->assertViewHas('results', fn ($results) => $results->count() === 1 && $results[0]->id === $first->id);
+    }
+
+    public function test_empty_retrieval_remains_valid_no_match(): void
+    {
+        $this->stubSearch([]);
+        $this->post('/search', ['image' => UploadedFile::fake()->image('query.jpg')])
+            ->assertViewHas('error', null)->assertViewHas('results', fn ($results) => $results->isEmpty());
     }
 
     public function test_super_admin_can_upload_multiple_compatible_references(): void

@@ -11,19 +11,31 @@ class VisualSearch
 {
     public function policy(): array
     {
+        $defaults = [
+            'pipeline' => config('visual_search.pipeline'),
+            'threshold' => (float) config('visual_search.threshold'),
+            'min_margin' => (float) config('visual_search.min_margin'),
+        ];
         $path = config('visual_search.policy_path');
-        if (! is_file($path)) {
-            throw new \RuntimeException('Visual relevance policy has not been calibrated.');
+        if (! is_string($path) || ! is_file($path)) {
+            return $defaults;
         }
-        $policy = json_decode(file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);
-        if (($policy['pipeline'] ?? null) !== config('visual_search.pipeline')
-            || ! is_numeric($policy['threshold'] ?? null) || ! is_finite((float) $policy['threshold'])
-            || $policy['threshold'] < -1 || $policy['threshold'] > 1
-            || ($policy['positive_queries'] ?? 0) < 1 || ($policy['negative_queries'] ?? 0) < 1) {
-            throw new \RuntimeException('Invalid relevance policy.');
+        try {
+            $policy = json_decode(file_get_contents($path), true, 32, JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return $defaults;
         }
 
-        return $policy;
+        if (! is_array($policy) || ($policy['pipeline'] ?? null) !== $defaults['pipeline']) {
+            return $defaults;
+        }
+
+        return array_merge($defaults, [
+            'threshold' => is_numeric($policy['threshold'] ?? null)
+                ? (float) $policy['threshold'] : $defaults['threshold'],
+            'min_margin' => is_numeric($policy['min_margin'] ?? null)
+                ? (float) $policy['min_margin'] : $defaults['min_margin'],
+        ]);
     }
 
     public function candidates(array $query): Collection
@@ -50,28 +62,61 @@ class VisualSearch
 
     public function score(float $global, array $query, array $reference): float
     {
-        $compatibility = [];
+        $signals = [];
+
         foreach (['color', 'texture', 'pattern', 'shape'] as $name) {
             $a = $query[$name] ?? null;
             $b = $reference[$name] ?? null;
+
             if (! is_array($a) || ! is_array($b) || ! $a || count($a) !== count($b)) {
                 continue;
             }
+
             if ($name === 'shape') {
-                $compatibility[] = min($a[0], $b[0]) / max($a[0], $b[0], .000001);
-            } elseif (array_sum($a) > 0 && array_sum($b) > 0) {
-                $intersection = 0;
-                foreach ($a as $i => $value) {
-                    $intersection += min($value / array_sum($a), $b[$i] / array_sum($b));
-                }
-                $compatibility[] = $intersection;
+                $signals[$name] = min($a[0], $b[0])
+                    / max($a[0], $b[0], 0.000001);
+
+                continue;
             }
+
+            $sumA = array_sum($a);
+            $sumB = array_sum($b);
+
+            if ($sumA <= 0 || $sumB <= 0) {
+                continue;
+            }
+
+            $intersection = 0.0;
+
+            foreach ($a as $i => $value) {
+                $intersection += min(
+                    $value / $sumA,
+                    $b[$i] / $sumB
+                );
+            }
+
+            $signals[$name] = $intersection;
         }
 
-        // Conservative agreement gate: disagreement lowers global score. Missing
-        // descriptors are not fabricated as mismatches. Threshold is calibrated
-        // against THIS score, not the old raw cosine threshold.
-        return $compatibility ? min($global, array_sum($compatibility) / count($compatibility)) : -1;
+        if (! $signals) {
+            return $global;
+        }
+
+        // Ambil evidence visual terkuat.
+        // Descriptor yang berubah karena viewpoint tidak langsung dianggap mismatch.
+        rsort($signals, SORT_NUMERIC);
+
+        $strongest = array_slice(
+            $signals,
+            0,
+            min(2, count($signals))
+        );
+
+        $visualSupport = array_sum($strongest) / count($strongest);
+
+        // CLIP tetap sinyal utama.
+        // Descriptor hanya membantu verification.
+        return (0.75 * $global) + (0.25 * $visualSupport);
     }
 
     public function search(array $query): Collection
@@ -79,12 +124,36 @@ class VisualSearch
         $started = microtime(true);
         $policy = $this->policy();
         $candidates = $this->candidates($query);
-        $accepted = $candidates->map(function ($row) use ($query) {
-            $row->score = $this->score((float) $row->similarity, $query['features'], json_decode($row->features, true, 32, JSON_THROW_ON_ERROR));
+        $ranked = $candidates->map(function ($row) use ($query) {
+            $row->score = $this->score(
+                (float) $row->similarity,
+                $query['features'],
+                json_decode($row->features, true, 32, JSON_THROW_ON_ERROR)
+            );
 
             return $row;
-        })->filter(fn ($row) => $row->score >= $policy['threshold'])
-            ->sortByDesc('score')->unique('product_id')->take(12)->values();
+        })->sortByDesc('score')->unique('product_id')->values();
+
+        $best = $ranked->get(0);
+        $second = $ranked->get(1);
+        $margin = $best ? ($second ? $best->score - $second->score : 1.0) : null;
+
+        if (! $best || $best->score < $policy['threshold'] || $margin < $policy['min_margin']) {
+            $accepted = collect();
+        } else {
+            $accepted = $ranked->filter(fn ($row) => $row->score >= $policy['threshold'])->take(12)->values();
+        }
+
+        Log::info('visual_search_decision', [
+            'best_product_id' => $best?->product_id,
+            'best_score' => $best?->score,
+            'second_score' => $second?->score,
+            'margin' => $margin,
+            'threshold' => $policy['threshold'],
+            'min_margin' => $policy['min_margin'],
+            'results' => $accepted->count(),
+            'no_match' => $accepted->isEmpty(),
+        ]);
         $products = Product::whereIn('id', $accepted->pluck('product_id'))->get()->keyBy('id');
         $results = $accepted->map(function ($row) use ($products) {
             $product = $products->get($row->product_id);

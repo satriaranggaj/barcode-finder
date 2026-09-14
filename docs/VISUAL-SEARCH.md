@@ -1,5 +1,19 @@
 # Lensku: implementasi visual search lokal
 
+## Pembaruan runtime 14 September 2026
+
+Bagian ini menggantikan uraian score, kewajiban policy, dan keputusan rejection pada laporan awal di bawah. Model, preprocessing, reference representation, pgvector/HNSW, serta client compression tidak berubah.
+
+- Score: `0.75 × global + 0.25 × rata-rata dua descriptor terkuat`. Bila descriptor tidak tersedia, gunakan global. Descriptor yang lemah akibat viewpoint tidak otomatis menjatuhkan seluruh match.
+- Policy **opsional**. File hilang, JSON rusak, atau pipeline berbeda memakai config; field threshold/margin yang hilang memakai default masing-masing. Policy cukup berisi `pipeline`, `threshold`, dan `min_margin`; tidak memerlukan label SKU/query. Policy valid yang sudah ada tetap menjadi override.
+- Default configurable: `IMAGE_SEARCH_MIN_SCORE=0.72`, `IMAGE_SEARCH_MIN_MARGIN=0.04`. Ini starting defaults yang diminta, bukan calibrated truth. Kalibrasi hanya alat tuning opsional; hasil kalibrasi formula lama bukan bukti akurasi formula baru.
+- Urutan keputusan: score seluruh Top-K → sort → deduplicate product → bandingkan best dengan second → threshold/margin rejection → maksimal 12 hasil yang melewati threshold. Jika tidak ada kandidat, best terlalu rendah, atau selisih terlalu kecil, hasil `[]` tetap valid tanpa refill/fallback legacy. Kandidat tunggal memakai margin 1.0.
+- Log `visual_search_decision` memuat product_id terbaik, best/second score, margin, threshold, min_margin, jumlah hasil dan no-match; tidak memuat image/vector/descriptor.
+
+Sesudah memperbarui kode jalankan `php artisan optimize:clear`. Tidak perlu migration atau reindex untuk perubahan scoring ini. `.env` pengguna tidak diubah. Hasil uji foto serta angka performa di laporan awal adalah catatan historis, bukan validasi formula baru.
+
+Validasi pembaruan: seluruh Laravel **39 test / 137 assertion lulus**, frontend compression **4 test lulus**, Python existing **6 test lulus**, Pint dan `git diff --check` lulus. Regression menemukan dan memperbaiki error `$errors` belum tersedia pada respons PostTooLarge sebelum session middleware; respons kini tetap 413. Pengujian ini membuktikan alur scoring/rejection dan regression, bukan akurasi foto viewpoint baru yang belum diberi label.
+
 Baseline: `5854fba` (update fitur admin biasa). Tidak ada deploy, push, perubahan `.env` pengguna, atau perubahan database production. Modifikasi logo/layout yang sudah ada sebelum pekerjaan ini dipertahankan.
 
 ## Penyebab dan alur runtime
