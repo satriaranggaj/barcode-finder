@@ -124,6 +124,8 @@
                 </div>
 
                 {{-- Dukungan --}}
+                {{-- Dinonaktifkan sementara; ubah kondisi untuk menampilkan kembali bagian donasi. --}}
+                @if (false)
                 <div>
                     <p class="text-xs font-bold uppercase tracking-[0.16em] text-[#8b7355]">
                         Dukung Lensku
@@ -146,6 +148,7 @@
                         ❤️ Dukung via Saweria
                     </a>
                 </div>
+                @endif
 
             </div>
 
