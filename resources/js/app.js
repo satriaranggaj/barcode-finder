@@ -190,3 +190,16 @@ navToggle?.addEventListener('click', () => {
 		mobileNavigation.hidden = isOpen;
 	}
 });
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker
+            .register('/sw.js')
+            .catch(error => {
+                console.error(
+                    'Service worker registration failed:',
+                    error
+                );
+            });
+    });
+}
