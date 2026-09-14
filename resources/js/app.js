@@ -1,9 +1,3 @@
-import { installImageCompression } from './image-compression';
-import { installApp } from './install-app';
-
-installImageCompression();
-installApp();
-
 /*
 |--------------------------------------------------------------------------
 | PHOTO PICKER - KAMERA / GALERI
@@ -98,7 +92,7 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 */
 
 document.querySelectorAll('[data-image-preview]').forEach((input) => {
-	input.addEventListener('image:prepared', () => {
+	input.addEventListener('change', () => {
 		const file = input.files?.[0];
 		const preview = document.getElementById(input.dataset.previewTarget);
 		const image = preview?.querySelector('[data-preview-image]');
@@ -114,8 +108,7 @@ document.querySelectorAll('[data-image-preview]').forEach((input) => {
 			return;
 		}
 
-			if (image) {
-				if (image.src.startsWith('blob:')) URL.revokeObjectURL(image.src);
+		if (image) {
 			image.src = URL.createObjectURL(file);
 		}
 
@@ -190,16 +183,3 @@ navToggle?.addEventListener('click', () => {
 		mobileNavigation.hidden = isOpen;
 	}
 });
-
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker
-            .register('/sw.js')
-            .catch(error => {
-                console.error(
-                    'Service worker registration failed:',
-                    error
-                );
-            });
-    });
-}

@@ -5,6 +5,3 @@ pillow
 torch
 torchvision
 transformers
-numpy
-opencv-python-headless
-onnxruntime==1.24.2
