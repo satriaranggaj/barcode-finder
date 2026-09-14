@@ -1,6 +1,8 @@
 import { installImageCompression } from './image-compression';
+import { installApp } from './install-app';
 
 installImageCompression();
+installApp();
 
 /*
 |--------------------------------------------------------------------------
