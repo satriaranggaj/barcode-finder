@@ -1,7 +1,10 @@
-fastapi
-uvicorn[standard]
-python-multipart
-pillow
-torch
-torchvision
-transformers
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+python-multipart==0.0.32
+Pillow==12.3.0
+numpy==2.5.3
+torch==2.14.0
+torchvision==0.29.0
+transformers==4.57.6
+faiss-cpu==1.15.0
+opencv-python-headless==5.0.0.93

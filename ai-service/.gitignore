@@ -1,0 +1,9 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+indexes/
+dataset/
+evaluation/
+.env
+*.lock
