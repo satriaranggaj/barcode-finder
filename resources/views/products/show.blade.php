@@ -190,6 +190,50 @@
                     </div>
                 </div>
 
+                {{-- Object Selection Editor --}}
+                <div 
+                    data-object-selection 
+                    class="mt-4 rounded-xl border border-[#8b5e00] bg-[#543019] p-3"
+                >
+                    <p class="mb-2 text-xs font-bold text-[#fff200]">
+                        Sesuaikan area objek (opsional)
+                    </p>
+                    
+                    <div 
+                        data-preview 
+                        class="relative min-h-[200px] max-h-[500px] overflow-hidden rounded-lg bg-[#6b4025]"
+                    ></div>
+                    
+                    <input 
+                        type="hidden" 
+                        name="crop_coordinates[]" 
+                        data-result-input
+                    >
+                    <input 
+                        type="hidden" 
+                        name="selection_source" 
+                        data-source-input
+                        value="full"
+                    >
+                    
+                    <div class="mt-2 flex gap-2">
+                        <button
+                            type="button"
+                            data-reset-selection
+                            class="rounded-lg bg-[#7a4b2c] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#8b5e00]"
+                        >
+                            Reset seleksi
+                        </button>
+                        <button
+                            type="button"
+                            data-apply-padding
+                            class="rounded-lg bg-[#7a4b2c] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#8b5e00]"
+                        >
+                            Tambah padding
+                        </button>
+                    </div>
+                </div>
+
                 <button
                     data-preview-submit
                     type="submit"
@@ -205,3 +249,7 @@
     </section>
 </div>
 @endsection
+
+@push('scripts')
+<script type="module" src="{{ mix('js/object-selection.js') }}"></script>
+@endpush

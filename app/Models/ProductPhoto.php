@@ -11,6 +11,14 @@ class ProductPhoto extends Model
         'product_id',
         'path',
         'embedding',
+        'crop',
+        'selection_source',
+        'selection_verified',
+    ];
+
+    protected $casts = [
+        'crop' => 'array',
+        'selection_verified' => 'boolean',
     ];
 
     public function product(): BelongsTo

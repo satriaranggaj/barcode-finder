@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ObjectSelectionController;
 use App\Http\Controllers\ProductController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +23,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin:admin,super_admin')->g
     Route::delete('/photos/{photo}', [ProductController::class, 'deletePhoto'])->name('photos.destroy');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
+    Route::post('/object-selection', [ObjectSelectionController::class, 'propose'])->name('object-selection.propose');
 
     Route::middleware('admin:super_admin')->group(function (): void {
         Route::post('/search', [ProductController::class, 'search'])->name('search');

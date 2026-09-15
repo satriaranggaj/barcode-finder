@@ -139,17 +139,31 @@ class ProductController extends Controller
         $validated = $request->validate([
             'images' => ['required', 'array', 'min:1'],
             'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'crop_coordinates' => ['nullable', 'array'],
+            'crop_coordinates.*' => ['nullable', 'array', 'x', 'y', 'width', 'height'],
+            'selection_source' => ['nullable', 'string', 'in:auto,manual,full'],
         ]);
 
         try {
-            foreach ($validated['images'] as $image) {
+            foreach ($validated['images'] as $index => $image) {
                 $embedding = $this->createEmbedding($image);
                 $photoPath = $image->store('products', 'public');
+
+                $cropData = null;
+                if (isset($validated['crop_coordinates'][$index])) {
+                    $cropData = $validated['crop_coordinates'][$index];
+                } elseif (isset($validated['crop_coordinates'][0])) {
+                    // If only one set of coordinates provided, apply to all images
+                    $cropData = $validated['crop_coordinates'][0];
+                }
 
                 ProductPhoto::create([
                     'product_id' => $product->id,
                     'path' => $photoPath,
                     'embedding' => '['.implode(',', $embedding).']',
+                    'crop' => $cropData,
+                    'selection_source' => $validated['selection_source'] ?? ($cropData ? 'auto' : 'full'),
+                    'selection_verified' => false,
                 ]);
             }
         } catch (\Throwable $exception) {
