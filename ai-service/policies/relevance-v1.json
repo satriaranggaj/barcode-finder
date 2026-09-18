@@ -1,0 +1,95 @@
+{
+  "frozen": true,
+  "synthetic": false,
+  "threshold": 0.7059600695967674,
+  "signature": {
+    "pipeline": {
+      "models": {
+        "siglip": {
+          "model": "google/siglip2-base-patch16-256",
+          "revision": "3f9f96cb90da5dbc758b01813f2f6f1aee24c1ab",
+          "pooling": "image_features",
+          "processor": "slow-v1",
+          "transformers": "4.57.6"
+        },
+        "dino": {
+          "model": "facebook/dinov2-small",
+          "revision": "ed25f3a31f01632728cabb09d1542f84ab7b0056",
+          "pooling": "cls",
+          "processor": "slow-v1",
+          "transformers": "4.57.6"
+        }
+      },
+      "preprocessing": {
+        "version": "object-centric-v4",
+        "max_side": 1024,
+        "code": {
+          "encoders/huggingface.py": "60dab25801080191f3efd4004b0dd99033b721be055a8475d1057ee75cfde653",
+          "encoders/dino.py": "ecbc7c3f0f9579cbbc7c37904971c057ed7cd69f4e93a3fd7dadd90902f90e15",
+          "preprocessing/pipeline.py": "6f9dd9929b2621edf3aef2e804b2f94a646f2e5945e5a65fdeae0e415cd2c146",
+          "preprocessing/selection.py": "ea9555c5595655f6eb9fb6fead39d0bbfa0f8afbc3e013724137f11a763e1227",
+          "preprocessing/foreground.py": "a3567799512b12abd6ecc1f27b962a24f6ea0a80fd8680a8a71ecdb179a281c9",
+          "preprocessing/saliency.py": "5125bf30c1db82ca76a1b1709cefdf499d4f55d3dff6301c9e8d3b61ca8dc649",
+          "preprocessing/crop.py": "854272e395fccc168d199342484b09fcd6ea8a21549d8f4f5f7d89abd14c922f",
+          "search/service.py": "71368e910ae381f68dadb8f82c6ed161ff7a27e4f750b8336b6fa9f3bf92ff80"
+        },
+        "reference_mode": "object",
+        "selection_padding": 0.08,
+        "decode_memory_mb": 256,
+        "description_text": false,
+        "patch_version": "masked-square-v2",
+        "patches": 0
+      }
+    },
+    "index_fingerprint": "cda0fa69c21c07528b3cbf357e1f60f9802a9ae95774014d78e6078ad2232548",
+    "weights": {
+      "siglip": 0.35,
+      "dino": 0.65
+    },
+    "ranking_code": "49449ce5a18357e27563e1d831d4d04a2a1c73733c64e6ad1cdb54bffd0e9c71",
+    "local_weight": 0.5,
+    "global_weight": 0.0,
+    "patch_weight": 0.0,
+    "secondary_weight": 0.0,
+    "patch_aggregation": "top_k",
+    "patch_top_k": 16,
+    "patch_trim": 0.1,
+    "description_text_weight": 0.0,
+    "ocr_enabled": false,
+    "ocr_min_confidence": 80,
+    "parser": "description-attributes-v1",
+    "candidates": 50,
+    "object_index_weight": 0.8,
+    "candidates_per_sku": 3,
+    "ambiguity_margin": 0.05,
+    "image": {
+      "master_quality": 88,
+      "catalog_quality": 83,
+      "thumbnail_quality": 78,
+      "catalog_side": 1600,
+      "thumbnail_side": 400
+    },
+    "thresholds": {
+      "high_score": 0.85,
+      "high_gap": 0.08,
+      "medium_score": 0.7
+    },
+    "rank_bias": 60.0
+  },
+  "tuning_hashes": [
+    "15bd52824f0ac5f1c41f49a2d342917325bcb00322ecc3dc224d9fed6fa5550d",
+    "3da1aa992aa29f2a704c2546572e4e31c2049abfb5c9e982d58712526ac7c651",
+    "401eda2040cf615ac38e275f7a3faf74c2564dcc9c07c2c5cbbbb2bf121517b4",
+    "74872364d496245268886ce52f30a242bc03e60325cbdaa4881aecf287da667c",
+    "84b75a03a0237796a60c0d352c4d09c6a64fba7d542f67fbeebd67676519acfd",
+    "8a181cf844e5dfc8eab61310f2d2ce1bbe5d088d1e371fc4fe98b8ed48c159f7",
+    "8c93611159491ee27724c143914f10864e6ac81e1277cf19f5f69eb4498863ef",
+    "a0394baa19cef018fb31f28f3a6666407aa92581e857b869d336f6c836e2c0a5",
+    "c69bc7e3621b9452fecb05103deb11dca1afb76ff6d9d296060bf055701e7cee",
+    "d012e87ceaf12e88da2ee5b6c4429654f6196ed798ed3cd997649e5787535349"
+  ],
+  "tuning_groups": [
+    "dumbbells-store-20260909",
+    "floor-screwdriver-20260907"
+  ]
+}

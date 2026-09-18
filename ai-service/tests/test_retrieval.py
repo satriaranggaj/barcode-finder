@@ -146,12 +146,15 @@ class RetrievalTests(unittest.TestCase):
     def test_candidate_reranking_is_bounded(self):
         # Return an intentionally oversized candidate stream to check reranking cap.
         self.add('001', 'one')
-        with patch.object(self.index, 'search', return_value=[(i, .9) for i in range(150)]):
+        with patch.object(self.index, 'search', return_value=[(i, .9) for i in range(150)]), \
+             patch.object(self.index, 'skus', return_value={i: f'sku-{i}' for i in range(150)}):
             original = self.index.reference
-            with patch.object(self.index, 'reference', side_effect=lambda _: original(0)) as read:
+            with patch.object(self.index, 'references',
+                              side_effect=lambda ids: {i: original(0) for i in ids}) as read:
                 result = self.service.search(Image.new('RGB', (64, 64)), mode='original')
         self.assertEqual(result['candidate_images'], 50)
-        self.assertEqual(read.call_count, 50)
+        self.assertEqual(read.call_count, 1)
+        self.assertEqual(len(read.call_args[0][0]), 50)
 
     def test_sku_aggregation_max_and_distinct_reference_count(self):
         result = aggregate_skus([{'sku': 'A', 'image_id': '1', 'score': .9},
@@ -178,7 +181,7 @@ class RetrievalTests(unittest.TestCase):
                 loaded.add_product_embedding({}, {})
         finally:
             loaded.close()
-        with (directory / 'siglip.faiss').open('ab') as file:
+        with (directory / 'siglip.global.faiss').open('ab') as file:
             file.write(b'corrupt')
         with self.assertRaises(ValueError):
             FaissIndexManager.load_index(directory)
@@ -227,6 +230,53 @@ class RetrievalTests(unittest.TestCase):
             debug = client.post('/embed', data={'representation': 'multi'}, files={'image': ('p.png', photo())}).json()
             self.assertEqual(set(debug['global']), {'siglip', 'dino'})
             self.assertEqual(len(debug['local']), 5)
+
+    def test_search_selection_mode_contract(self):
+        self.add('001', '1')
+        with TestClient(create_app(self.settings, self.service, MockEncoder())) as client:
+            manual = client.post('/search', data={'selection_mode': 'manual', 'crop_x': '0', 'crop_y': '0',
+                                                  'crop_width': '.5', 'crop_height': '.5', 'preprocessing_mode': 'original'},
+                                 files={'image': ('p.png', photo(), 'image/png')})
+            self.assertEqual(manual.status_code, 200)
+            body = manual.json()
+            self.assertEqual(body['query']['selection_mode'], 'manual')
+            self.assertEqual(body['query']['selection_used'], {'x': 0.0, 'y': 0.0, 'width': .5, 'height': .5})
+            self.assertEqual(body['results'][0]['sku'], '001')
+            full = client.post('/search', data={'selection_mode': 'full'}, files={'image': ('p.png', photo(), 'image/png')})
+            self.assertEqual(full.status_code, 200)
+            self.assertEqual(full.json()['query']['selection_mode'], 'full')
+            self.assertIsNone(full.json()['query']['selection_used'])
+            self.assertEqual(full.json()['results'][0]['sku'], '001')
+            for fields in ({'selection_mode': 'manual'},
+                           {'selection_mode': 'full', 'crop_x': '0', 'crop_y': '0', 'crop_width': '.5', 'crop_height': '.5'},
+                           {'selection_mode': 'auto', 'crop_x': '0'},
+                           {'crop_x': '0', 'crop_y': '0', 'crop_width': '0', 'crop_height': '.5'},
+                           {'crop_x': '.9', 'crop_y': '0', 'crop_width': '.2', 'crop_height': '.5'},
+                           {'crop_x': '0', 'crop_y': '0', 'crop_width': '.005', 'crop_height': '.5'}):
+                response = client.post('/search', data=fields, files={'image': ('p.png', photo())})
+                self.assertEqual(response.status_code, 422, fields)
+            multi = client.post('/embed', data={'representation': 'multi', 'selection_mode': 'manual',
+                                                'crop_x': '0', 'crop_y': '0', 'crop_width': '.5', 'crop_height': '.5'},
+                                files={'image': ('p.png', photo())})
+            self.assertEqual(multi.status_code, 200)
+            self.assertEqual(multi.json()['query']['selection_mode'], 'manual')
+            legacy = client.post('/embed', data={'selection_mode': 'manual',
+                                                 'crop_x': '0', 'crop_y': '0', 'crop_width': '.5', 'crop_height': '.5'},
+                                 files={'image': ('p.png', photo())})
+            self.assertEqual(legacy.status_code, 200)
+            self.assertIn('embedding', legacy.json())
+
+    def test_health_reports_relevance_gating(self):
+        from types import SimpleNamespace
+        with TestClient(create_app(self.settings, self.service, MockEncoder())) as client:
+            body = client.get('/health').json()
+            self.assertFalse(body['relevance_gated'])
+            self.assertIsNone(body['relevance_threshold'])
+        gated = SimpleNamespace(encoders={}, index=None, policy={'threshold': 0.706})
+        with TestClient(create_app(self.settings, gated, MockEncoder())) as client:
+            body = client.get('/health').json()
+            self.assertTrue(body['relevance_gated'])
+            self.assertEqual(body['relevance_threshold'], 0.706)
 
     def test_incremental_build_and_failed_build_preserve_published_generation(self):
         dataset = self.root / 'dataset'

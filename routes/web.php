@@ -4,10 +4,13 @@ use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ObjectSelectionController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\SearchFeedbackController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [ProductController::class, 'index'])->name('products.index');
 Route::post('/search', [ProductController::class, 'search'])->name('products.search');
+Route::post('/object-selection', [ObjectSelectionController::class, 'propose'])->middleware('throttle:20,1')->name('object-selection.propose');
+Route::post('/search-feedback', [SearchFeedbackController::class, 'store'])->middleware(['auth', 'throttle:20,1'])->name('search.feedback');
 Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
 
 Route::middleware('guest')->group(function (): void {
@@ -21,6 +24,9 @@ Route::prefix('admin')->name('admin.')->middleware('admin:admin,super_admin')->g
     Route::get('/products/{product}', [ProductController::class, 'adminShow'])->name('products.show');
     Route::post('/products/{product}/photo', [ProductController::class, 'uploadPhoto'])->name('products.photo.store');
     Route::delete('/photos/{photo}', [ProductController::class, 'deletePhoto'])->name('photos.destroy');
+    Route::get('/photos/{photo}/selection', [ObjectSelectionController::class, 'edit'])->name('photos.selection.edit');
+    Route::get('/photos/{photo}/selection-image', [ObjectSelectionController::class, 'image'])->name('photos.selection.image');
+    Route::put('/photos/{photo}/selection', [ObjectSelectionController::class, 'update'])->name('photos.selection.update');
     Route::post('/products', [ProductController::class, 'store'])->name('products.store');
     Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
     Route::post('/object-selection', [ObjectSelectionController::class, 'propose'])->name('object-selection.propose');

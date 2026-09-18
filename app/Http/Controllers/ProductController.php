@@ -2,15 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\RetrievalUnavailableException;
 use App\Imports\ProductsImport;
 use App\Models\Product;
 use App\Models\ProductPhoto;
+use App\Models\SearchFeedback;
+use App\Services\CropCoordinates;
+use App\Services\ProductAttributes;
+use App\Services\ProductImages;
+use App\Services\RetrievalClient;
+use App\Services\SearchEvidence;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -62,7 +71,28 @@ class ProductController extends Controller
             'productsWithPhotosList' => $productsWithPhotosList,
             'search' => $search,
             'tab' => $tab,
+            'pendingReferences' => $this->pendingReferenceCount(),
         ]);
+    }
+
+    /**
+     * Verified eligible confirmations newer than the last successful index
+     * build (all of them when never built). Approximation by design: it
+     * nudges a rebuild, never gates search.
+     */
+    private function pendingReferenceCount(): int
+    {
+        $query = SearchFeedback::where('training_status', 'verified')->where('reference_eligible', true);
+        $builtAt = Cache::get('visual-index-built-at');
+        if (is_string($builtAt) && $builtAt !== '') {
+            try {
+                $query->where('created_at', '>', \Carbon\Carbon::parse($builtAt));
+            } catch (\Throwable) {
+                // Corrupt marker: fall through to counting everything.
+            }
+        }
+
+        return $query->count();
     }
 
     public function importExcel(Request $request): RedirectResponse
@@ -97,10 +127,11 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
         ]);
 
-        Product::create([
+        $product = Product::create([
             'sku' => trim($validated['sku']),
             'description' => trim((string) ($validated['description'] ?? '')) ?: null,
         ]);
+        ProductAttributes::refreshFromDescription($product);
 
         return to_route('admin.index')->with('success', 'Item baru berhasil ditambahkan ke katalog.');
     }
@@ -116,6 +147,7 @@ class ProductController extends Controller
             'sku' => trim($validated['sku']),
             'description' => trim((string) ($validated['description'] ?? '')) ?: null,
         ]);
+        ProductAttributes::refreshFromDescription($product->fresh());
 
         return to_route('admin.products.show', $product)->with('success', 'Data item berhasil diperbarui.');
     }
@@ -127,49 +159,84 @@ class ProductController extends Controller
         return view('products.show', compact('product'));
     }
 
-    public function adminShow(Product $product): View
+    public function adminShow(Product $product, Request $request): View
     {
         $product->load('photos');
+        // Review filter for backfilled auto-selection; public catalog always
+        // shows every photo.
+        $filter = in_array($request->string('selection')->toString(), ['all', 'unverified', 'verified', 'failed'], true)
+            ? $request->string('selection')->toString()
+            : 'all';
+        if ($filter !== 'all') {
+            $product->setRelation('photos', $product->photos->filter(
+                fn ($photo) => match ($filter) {
+                    'verified' => (bool) $photo->selection_verified,
+                    'unverified' => ! $photo->selection_verified,
+                    'failed' => $photo->crop === null,
+                }
+            )->values());
+        }
 
-        return view('products.show', compact('product'));
+        return view('products.show', compact('product') + ['selectionFilter' => $filter]);
     }
 
-    public function uploadPhoto(Request $request, Product $product): RedirectResponse
+    public function uploadPhoto(Request $request, Product $product): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
-            'images' => ['required', 'array', 'min:1'],
+            'images' => ['required', 'array', 'min:1', 'max:10'],
             'images.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
-            'crop_coordinates' => ['nullable', 'array'],
-            'crop_coordinates.*' => ['nullable', 'array', 'x', 'y', 'width', 'height'],
-            'selection_source' => ['nullable', 'string', 'in:auto,manual,full'],
+            'crops' => ['nullable', 'array', 'max:10'],
+            'crops.*' => ['nullable', 'array'],
+            'crop_coordinates' => ['nullable', 'array', 'max:10'],
+            'crop_coordinates.*' => ['nullable', 'json'],
+            'selection_source' => ['nullable', Rule::in(CropCoordinates::SELECTION_MODES)],
+            'selection_sources' => ['nullable', 'array', 'max:10'],
+            'selection_sources.*' => [Rule::in(CropCoordinates::SELECTION_MODES)],
         ]);
+
+        $crops = array_map(fn ($crop) => CropCoordinates::validate($crop), $validated['crops'] ?? []);
+        foreach ($validated['crop_coordinates'] ?? [] as $index => $json) {
+            $value = $json ? json_decode($json, true) : null;
+            if ($value !== null && ! is_array($value)) {
+                throw ValidationException::withMessages(['crop_coordinates' => 'Koordinat crop tidak valid.']);
+            }
+            $crops[$index] = CropCoordinates::validate($value);
+        }
 
         try {
             foreach ($validated['images'] as $index => $image) {
-                $embedding = $this->createEmbedding($image);
-                $photoPath = $image->store('products', 'public');
-
-                $cropData = null;
-                if (isset($validated['crop_coordinates'][$index])) {
-                    $cropData = $validated['crop_coordinates'][$index];
-                } elseif (isset($validated['crop_coordinates'][0])) {
-                    // If only one set of coordinates provided, apply to all images
-                    $cropData = $validated['crop_coordinates'][0];
+                // Existing uploads keep their full catalog image. FAISS consumes
+                // the stored crop during the controlled reference export/build.
+                $crop = $crops[$index] ?? null;
+                $source = $validated['selection_sources'][$index] ?? $validated['selection_source'] ?? 'full';
+                $embedding = config('retrieval.driver') === 'faiss' ? null : $this->createEmbedding($image, $crop);
+                $stored = app(ProductImages::class)->store($image);
+                try {
+                    ProductPhoto::create([
+                        ...$stored,
+                        'product_id' => $product->id,
+                        'embedding' => $embedding === null ? null : '['.implode(',', $embedding).']',
+                        'crop' => $crop,
+                        'selection_source' => $crop ? $source : 'full',
+                        'selection_verified' => $crop !== null,
+                    ]);
+                } catch (\Throwable $error) {
+                    app(ProductImages::class)->discard($stored);
+                    throw $error;
                 }
-
-                ProductPhoto::create([
-                    'product_id' => $product->id,
-                    'path' => $photoPath,
-                    'embedding' => '['.implode(',', $embedding).']',
-                    'crop' => $cropData,
-                    'selection_source' => $validated['selection_source'] ?? ($cropData ? 'auto' : 'full'),
-                    'selection_verified' => false,
-                ]);
             }
         } catch (\Throwable $exception) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Pemrosesan foto gagal. Periksa foto yang sudah tersimpan sebelum mencoba lagi.'], 503);
+            }
+
             return back()->withInput()->withErrors([
-                'images' => 'Foto belum disimpan karena layanan pencarian gambar sedang tidak tersedia.',
+                'images' => 'Sebagian foto mungkin sudah tersimpan. Periksa katalog sebelum mencoba lagi; layanan pemrosesan foto sedang tidak tersedia.',
             ]);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'redirect' => route('admin.products.show', $product)]);
         }
 
         return to_route('admin.products.show', $product)->with('success', count($validated['images']).' design foto SKU berhasil ditambahkan.');
@@ -178,7 +245,7 @@ class ProductController extends Controller
     public function deletePhoto(ProductPhoto $photo): RedirectResponse
     {
         $product = $photo->product;
-        Storage::disk('public')->delete($photo->path);
+        app(ProductImages::class)->discardPhoto($photo);
         $photo->delete();
 
         return to_route('admin.products.show', $product)->with('success', 'Foto design berhasil dihapus.');
@@ -188,11 +255,56 @@ class ProductController extends Controller
     {
         $request->validate([
             'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'crop' => ['nullable', 'array'],
+            'crop_json' => ['nullable', 'json'],
+            'selection_source' => ['nullable', Rule::in(CropCoordinates::SELECTION_MODES)],
         ]);
+        $cropKey = $request->has('crop_json') ? 'crop_json' : 'crop';
+        $crop = $request->has('crop_json') ? CropCoordinates::fromJson($request->input('crop_json')) : CropCoordinates::validate($request->input('crop'));
+        $selectionSource = $request->input('selection_source');
+        if ($selectionSource === 'full' && $crop !== null) {
+            throw ValidationException::withMessages([$cropKey => 'Crop tidak dapat digunakan untuk pencarian full image.']);
+        }
+        if ($selectionSource === 'manual' && $crop === null) {
+            throw ValidationException::withMessages([$cropKey => 'Pencarian manual memerlukan koordinat crop.']);
+        }
+        $selectionMode = CropCoordinates::selectionMode($selectionSource, $crop);
+        $fullImage = $selectionMode === 'full';
 
         try {
-            $embedding = $this->createEmbedding($request->file('image'));
-            $results = $this->findSimilarProducts($embedding);
+            // Primary retrieval: FastAPI /search -> FAISS shortlist -> rerank.
+            // The legacy pgvector cosine path runs only when SKU_SEARCH_DRIVER=legacy.
+            if (config('retrieval.driver') === 'faiss') {
+                $allowFeedback = config('retrieval.feedback_enabled') && $request->user() !== null && $request->boolean('allow_feedback');
+                $report = app(RetrievalClient::class)->search($request->file('image'), $crop, $allowFeedback, $fullImage, $selectionMode);
+                $feedbackToken = $allowFeedback
+                    ? app(SearchEvidence::class)->stage($report, $request->user()->id, 'session-'.hash('sha256', $request->session()->getId()), $selectionMode) : null;
+                $products = Product::whereIn('sku', array_column($report['results'], 'sku'))->with('photos')->get()->keyBy('sku');
+                $results = collect($report['results'])->map(function ($row) use ($products) {
+                    $product = $products->get($row['sku']);
+                    if (! $product) {
+                        return null;
+                    }
+                    $photoId = pathinfo(basename($row['image_id'] ?? ''), PATHINFO_FILENAME);
+                    $photo = $product->photos->firstWhere('id', $photoId) ?? $product->photos->first();
+                    if (! $photo) {
+                        return null;
+                    }
+                    $product->photo = $photo->path;
+                    $product->image_url = $photo->thumbnail_url;
+                    $product->similarity = $row['score'];
+
+                    return $product;
+                })->filter()->values();
+            } else {
+                $embedding = $this->createEmbedding($request->file('image'), $crop);
+                $results = $this->findSimilarProducts($embedding);
+            }
+        } catch (RetrievalUnavailableException $exception) {
+            return view('products.search', [
+                'results' => collect(),
+                'error' => 'Pencarian belum dapat dilakukan. Layanan AI sedang tidak tersedia atau memberikan respons tidak valid.',
+            ]);
         } catch (\Throwable $exception) {
             return view('products.search', [
                 'results' => collect(),
@@ -203,19 +315,27 @@ class ProductController extends Controller
         return view('products.search', [
             'results' => $results,
             'error' => null,
+            'feedbackToken' => $feedbackToken ?? null,
+            // Explicit prediction for the confirmation UI; never treated as ground truth.
+            'predictedSku' => isset($report) ? ($report['results'][0]['sku'] ?? null) : null,
+            'searchInfo' => isset($report) ? ['confidence' => $report['confidence'] ?? 'low', 'calibrated' => $report['relevance_calibrated'] ?? false] : null,
+            // Near-tie alternatives ask staff to pick the variant; heuristic flag only.
+            'ambiguity' => isset($report) ? ['ambiguous' => (bool) ($report['ambiguous'] ?? false),
+                'reason' => $report['ambiguity_reason'] ?? null,
+                'alternatives' => array_values(array_filter(array_map(fn ($row) => is_array($row) && isset($row['sku']) ? [
+                    'sku' => (string) $row['sku'], 'score' => isset($row['score']) && is_numeric($row['score']) ? (float) $row['score'] : null,
+                ] : null, $report['ambiguity_alternatives'] ?? [])))] : null,
         ]);
     }
 
-    private function createEmbedding(mixed $image): array
+    private function createEmbedding(mixed $image, ?array $crop = null): array
     {
-        $response = Http::timeout(45)
-            ->retry(2, 250)
-            ->attach('image', fopen($image->getRealPath(), 'r'), $image->getClientOriginalName())
-            ->post(rtrim((string) config('services.ai.url'), '/').'/embed');
+        $fields = [];
+        foreach ($crop ?? [] as $key => $value) {
+            $fields['crop_'.$key] = $value;
+        }
 
-        $response->throw();
-
-        return $response->json('embedding');
+        return app(RetrievalClient::class)->send('embed', $image, $fields)['embedding'];
     }
 
     private function findSimilarProducts(array $embedding): Collection

@@ -162,9 +162,25 @@ curl.exe -X POST http://127.0.0.1:8001/embed `
   -F "image=@C:/photos/query.jpg" -F "representation=multi"
 ```
 
-Swagger tersedia di `/docs`. `/search` hanya mengembalikan hasil SKU, score komponen,
-matched_images, preprocessing aktual/reason, model tersedia, latency, confidence,
-dan score_gap. Tidak mengirim seluruh vector. `matched_images` menghitung foto SKU
+Swagger tersedia di `/docs`. Kontrak `POST /search` difinalisasi di
+`app/schemas.py` (`SearchResponse`) dan divalidasi setiap respons.
+
+Request (multipart): `image` (wajib), `top_k` (1..50), `crop_x/crop_y/
+crop_width/crop_height` (ternormalisasi 0..1, wajib keempatnya bila dipakai),
+`selection_mode` (`auto`/`manual`/`full`), `preprocessing_mode`
+(`original`/`object`), `category` opsional, `feedback_preview` opsional.
+
+Setiap kandidat: `rank`, `sku`, `product_id`, `score`, `dino_score`,
+`siglip_score`, `local_score`, `text_score`, `ocr_score`, `matched_images`
+(+ `matched_image_ids`, `visual/object/global_score`, `family` bila ada).
+Metadata search (`query`): `selection_used`, `selection_mode`, `preprocessing`
+aktual, `reason`, `requested_preprocessing`, `models`, `ocr_tokens`.
+Level search: `confidence`, `score_gap`, `confidence_calibrated`,
+flag `ambiguous` + `ambiguity_reason`/`ambiguity_alternatives`,
+`candidate_images`, `latency_ms`.
+
+Tidak pernah dikirim: full embedding vectors, absolute filesystem path,
+atau private metadata. `matched_images` menghitung foto SKU
 yang masuk shortlist, bukan total foto katalog atau klaim relevant match.
 
 Invalid/corrupt/unsupported image, top_k di luar 1..50, atau mode salah → 422;
@@ -192,6 +208,27 @@ image_score = SIGLIP_WEIGHT * siglip_score + DINO_WEIGHT * dino_score
 sku_score = max(image_scores dalam shortlist)
 ```
 
+### DINO patch reranking (opsional, `PATCH_WEIGHT > 0`)
+
+Patch matching hanya berjalan pada kandidat shortlist (maksimum CANDIDATES),
+tidak pernah pada seluruh korpus. Patch reference di-cache di SQLite saat build
+dan dibaca satu kali dalam bulk untuk shortlist.
+
+```text
+patch = symmetric similarity antara query patches (masked content) dan reference patches
+        per arah: best correspondence tiap patch, lalu aggregation configurable
+dino_score = (1-PATCH_WEIGHT) * dino_score + PATCH_WEIGHT * patch
+local_score (field respons) = patch, untuk debug/evaluasi
+```
+
+`PATCH_AGGREGATION` (`top_k` default; juga `median`, `trimmed_mean`, `mean`)
+membuat skor tahan outlier: satu patch kebetulan tidak menentukan skor, dan
+reference dengan lebih banyak patch tidak otomatis unggul — jumlah korespondensi
+dibatasi sisi yang lebih kecil (`min(PATCH_TOP_K, |query|, |reference|)`).
+`PATCH_TRIM` mengatur pemangkasan untuk `trimmed_mean`. Patch dari padding sudah
+dimask saat ekstraksi (Prompt 11). Semua skor tetap heuristic **bukan
+probabilitas**.
+
 Max aggregation tidak memberi bonus hanya karena satu SKU memiliki lebih banyak foto.
 Bobot model harus nonnegatif dan berjumlah 1; jika satu tidak tersedia, bobot yang
 tersisa dinormalisasi ulang. Confidence memakai score top1 dan gap sebelum top_k
@@ -208,9 +245,18 @@ python -m app.scripts.evaluate --dataset .\evaluation --output .\evaluation-repo
 ```
 
 Laporan JSON memuat Top-1/3/5 accuracy (fraksi 0..1), MRR dengan cutoff 50 SKU,
-median/P95 latency, hasil per query, signature pipeline, dan bobot. Rank yang tidak
-ditemukan dalam hasil diberi reciprocal rank 0. Waktu tidak termasuk startup/model
-download, tetapi termasuk preprocessing/inference/retrieval/reranking.
+median/P95 latency, `dataset_version` (digest path + hash foto query), hasil per
+query, signature pipeline (termasuk confidence thresholds), dan bobot. Rank yang
+tidak ditemukan dalam hasil diberi reciprocal rank 0. Waktu tidak termasuk
+startup/model download, tetapi termasuk preprocessing/inference/retrieval/reranking.
+CLI juga mencetak ringkasan human-readable singkat sebelum JSON.
+
+Breakdown: `by_tag` memakai tag sidecar query (`handheld`, `clean`,
+`store-background`, ...), `by_family` memakai family index reference (tanpa
+family → bucket eksplisit `unknown`, bukan label buatan). Setiap query
+menyimpan SKU prediksi, status ambiguity, dan daftar `errors` berisi analisis
+Top-1 yang gagal (SKU expected vs predicted, rank, component scores pemenang
+yang salah, matched reference, ambiguity). Report tidak memuat image bytes.
 
 Foto evaluation harus dari pengambilan berbeda, bukan crop/resize/recompress dari
 reference yang sama. Tool menolak hash piksel identik antara reference/evaluation
@@ -219,6 +265,33 @@ near-duplicate: pengelola dataset tetap harus memisahkan sesi/capture yang sama.
 Tidak ada threshold/bobot yang dipilih dari evaluation. Jika tuning bobot diperlukan,
 gunakan split validation terpisah lalu jalankan evaluation sekali dengan config beku.
 Belum ada klaim akurasi produk nyata sampai dataset berlabel dievaluasi.
+
+## Ablasi fitur (A–G)
+
+```powershell
+python -m app.scripts.compare --references .\references --evaluation .\evaluation --output .\ablation `
+  --patch-weight 0.2 --secondary-weight 0.1 --description-weight 0.5 --ocr
+```
+
+Setiap skenario (A global-only, B dual baseline, C object crop, D +patch, E
++multiple references, F +description, G +OCR) membangun indeks tersendiri
+yang ditandatangani lalu dievaluasi pada split yang sama; `summary.json`
+meringkas metrik (Top-1/3/5, MRR, median/P95 latency) dan `run.json` mencatat
+argumen plus daftar skenario. Tidak ada kesimpulan otomatis: fitur hanya
+diaktifkan di produksi bila angka held-out mendukungnya. Flag `--ocr`
+membutuhkan binary Tesseract; tanpa dataset berlabel yang cukup, gunakan mock
+smoke test (`test_workflow.py`) dan nyatakan keterbatasannya.
+
+## Benchmark pipeline (sintetis, repeatable)
+
+```powershell
+python -m app.scripts.benchmark_search --references 60 --queries 20 --seed bench-v1 --output .\bench.json
+```
+
+Encoder stub deterministik menggantikan SigLIP/DINO sehingga yang diukur murni
+overhead pipeline per stage (`stage_ms` di respons `/search`: selection,
+preprocess, encode, faiss, references, ocr, rerank). Bukan klaim latency
+produksi (inference model asli tidak termasuk) dan bukan akurasi.
 
 ## Konfigurasi
 
@@ -258,9 +331,31 @@ yang sama agar tidak terpisah dari FAISS saat publish.
   dengan hard negatives dalam keluarga yang sama, cek detail tip/ukuran/sudut, lalu
   ukur apakah DINO/crop/reranking membantu dibanding global-only. Foto tanpa skala
   tidak selalu dapat membedakan panjang fisik; ambil teks ukuran/barcode bila ada.
-- `features/ocr.py` menyediakan interface disabled. Belum ada training atau OCR model.
+- `features/ocr.py` menyediakan OCR modular berbasis executable Tesseract
+  (gratis/open-source, CPU-only, opsional). Kata di bawah ambang confidence
+  dibuang dan tidak pernah dianggap benar; binary yang hilang menurunkan
+  layanan ke tanpa-kata secara graceful. Hasil terstruktur (teks, token
+  ternormalisasi, confidence engine, bounding box 0..1) tersedia lewat
+  `extract_words()`; `extract_text()` yang dipakai ranking tidak berubah.
   Encoder contract dapat diganti metric-learning model; metadata family membantu
   pembuatan anchor/positive/hard-negative triplet di tahap berikutnya.
+
+## OCR (opsional)
+
+```powershell
+# Windows: install executable Tesseract (salah satu), lalu restart terminal.
+winget install --id UB-Mannheim.TesseractOCR
+# atau: choco install tesseract
+
+tesseract --version
+$env:OCR_ENABLED='true'
+$env:OCR_BINARY='tesseract'
+$env:OCR_MIN_CONFIDENCE='80'
+```
+
+Tanpa `OCR_ENABLED=true`, atau bila binary tidak ditemukan, pencarian tetap
+berjalan dengan `DisabledOCR` (tanpa kata). OCR hanya berjalan maksimal sekali
+per query dan hanya bila ada shortlist serta budget secondary evidence > 0.
 
 ## Tests
 

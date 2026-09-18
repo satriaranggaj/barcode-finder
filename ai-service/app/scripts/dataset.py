@@ -16,7 +16,7 @@ def iter_images(root: Path):
 
 def read_photo(path: Path, settings):
     with path.open('rb') as file:
-        return decode_image(file.read(settings.max_bytes + 1), settings.max_bytes, settings.max_pixels)
+        return decode_image(file.read(settings.max_bytes + 1), settings.max_bytes, settings.max_pixels, settings.processing_memory_mb)
 
 
 def load_metadata(root: Path) -> dict:

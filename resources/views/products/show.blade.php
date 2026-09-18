@@ -2,6 +2,14 @@
 
 @section('content')
 <div class="mb-8 flex items-center gap-3 text-sm font-semibold text-[#765c47]"><a href="{{ request()->routeIs('admin.*') ? route('admin.index') : route('products.index') }}" class="transition hover:text-[#8b5e00]">← {{ request()->routeIs('admin.*') ? 'Admin' : 'Katalog' }}</a><span>/</span><span class="font-mono text-[#543019]">{{ $product->sku }}</span></div>
+@if (request()->routeIs('admin.*'))
+    <div class="mb-4 flex flex-wrap items-center gap-2 text-xs font-bold" aria-label="Filter status seleksi">
+        <span class="uppercase tracking-wider text-[#8b7355]">Seleksi:</span>
+        @foreach (['all' => 'Semua', 'unverified' => 'Belum diverifikasi', 'verified' => 'Terverifikasi', 'failed' => 'Gagal auto-selection'] as $value => $label)
+            <a href="{{ route('admin.products.show', array_merge(['product' => $product->id], $value === 'all' ? [] : ['selection' => $value])) }}" class="rounded-full px-3 py-1.5 transition {{ ($selectionFilter ?? 'all') === $value ? 'bg-[#543019] text-white' : 'border border-[#ead9b8] bg-white text-[#765c47] hover:border-[#ffc20e]' }}">{{ $label }}</a>
+        @endforeach
+    </div>
+@endif
 <div class="grid gap-8 lg:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
     <section class="overflow-hidden rounded-3xl border border-[#eadfca] bg-[#fffdf4]">
         <div class="flex min-h-[420px] items-center justify-center bg-[#f5e6bd] p-6 sm:min-h-[560px]">
@@ -10,8 +18,16 @@
                     <div class="flex snap-x snap-mandatory overflow-x-auto rounded-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" data-design-track>
                         @foreach ($product->photos as $photo)
                             <div class="relative w-full shrink-0 snap-center" data-design-slide role="group" aria-label="Desain {{ $loop->iteration }} dari {{ $loop->count }}">
-                                <img src="{{ asset('storage/'.$photo->path) }}" alt="{{ $product->description ?: $product->sku }} - desain {{ $loop->iteration }}" class="h-[360px] w-full object-contain sm:h-[480px]" draggable="false">
+                                <img src="{{ $photo->url }}" alt="{{ $product->description ?: $product->sku }} - desain {{ $loop->iteration }}" class="h-[360px] w-full object-contain sm:h-[480px]" draggable="false">
                                 @if (request()->routeIs('admin.*'))
+                                    <a href="{{ route('admin.photos.selection.edit', $photo) }}" class="absolute left-2 top-2 rounded-lg bg-[#543019] px-3 py-2 text-xs text-white">Edit area barang</a>
+                                    @if ($photo->selection_verified)
+                                        <span class="absolute bottom-2 left-2 rounded-lg bg-[#1a7f37] px-3 py-1.5 text-xs font-bold text-white">✓ Terverifikasi · {{ $photo->selection_source }}</span>
+                                    @elseif ($photo->crop === null)
+                                        <span class="absolute bottom-2 left-2 rounded-lg bg-[#ed1c24] px-3 py-1.5 text-xs font-bold text-white">Tanpa seleksi</span>
+                                    @else
+                                        <span class="absolute bottom-2 left-2 rounded-lg bg-[#ffc20e] px-3 py-1.5 text-xs font-bold text-[#543019]">{{ $photo->selection_source === 'manual' ? 'Manual' : 'Auto' }} · belum diverifikasi</span>
+                                    @endif
                                     <form method="POST" action="{{ route('admin.photos.destroy', $photo) }}" class="absolute right-2 top-2">
                                         @csrf
                                         @method('DELETE')
@@ -64,6 +80,7 @@
             action="{{ route('admin.products.photo.store', $product) }}"
             method="POST"
             enctype="multipart/form-data"
+            data-upload-designs
             class="rounded-2xl bg-[#543019] p-5 text-white"
         >
             @csrf
@@ -193,17 +210,22 @@
                 {{-- Object Selection Editor --}}
                 <div 
                     data-object-selection 
+                    data-select-url="{{ route('object-selection.propose') }}"
                     class="mt-4 rounded-xl border border-[#8b5e00] bg-[#543019] p-3"
                 >
                     <p class="mb-2 text-xs font-bold text-[#fff200]">
                         Sesuaikan area objek (opsional)
+                    </p>
+
+                    <p data-selection-status role="status" class="mb-2 text-xs text-[#f8e9c2]">
+                        Kotak objek diusulkan otomatis. Geser atau tarik tepinya bila perlu.
                     </p>
                     
                     <div 
                         data-preview 
                         class="relative min-h-[200px] max-h-[500px] overflow-hidden rounded-lg bg-[#6b4025]"
                     ></div>
-                    
+
                     <input 
                         type="hidden" 
                         name="crop_coordinates[]" 
@@ -215,23 +237,6 @@
                         data-source-input
                         value="full"
                     >
-                    
-                    <div class="mt-2 flex gap-2">
-                        <button
-                            type="button"
-                            data-reset-selection
-                            class="rounded-lg bg-[#7a4b2c] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#8b5e00]"
-                        >
-                            Reset seleksi
-                        </button>
-                        <button
-                            type="button"
-                            data-apply-padding
-                            class="rounded-lg bg-[#7a4b2c] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#8b5e00]"
-                        >
-                            Tambah padding
-                        </button>
-                    </div>
                 </div>
 
                 <button
@@ -249,7 +254,3 @@
     </section>
 </div>
 @endsection
-
-@push('scripts')
-<script type="module" src="{{ mix('js/object-selection.js') }}"></script>
-@endpush

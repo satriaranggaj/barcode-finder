@@ -1,3 +1,41 @@
+import './object-selection';
+
+// One photo per request bounds POST size and PHP inference time for multi-upload.
+document.querySelectorAll('[data-upload-designs]').forEach(form => {
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (form.dataset.uploading === 'true') return;
+        const input = form.querySelector('input[name="images[]"]');
+        const files = [...(input?.files || [])];
+        if (!files.length || files.length > 10) { alert('Pilih 1 sampai 10 foto.'); return; }
+        const snapshot = new FormData(form);
+        form.dataset.uploading = 'true';
+        const status = document.createElement('p'); status.setAttribute('role','status'); form.append(status);
+        let completed = 0;
+        try {
+            let redirect;
+            for (const [i,file] of files.entries()) {
+                status.textContent = `Menyimpan foto ${i+1} dari ${files.length}…`;
+                const body = new FormData();
+                body.append('_token', snapshot.get('_token'));
+                body.append('images[0]',file);
+                body.append('crop_coordinates[0]',snapshot.get(`crop_coordinates[${i}]`) || '');
+                body.append('selection_sources[0]',snapshot.get(`selection_sources[${i}]`) || 'full');
+                const response = await fetch(form.action,{method:'POST',body,headers:{Accept:'application/json'}});
+                const data = await response.json().catch(()=>({}));
+                if (!response.ok) throw new Error(data.message || 'Upload gagal. Periksa foto yang sudah tersimpan sebelum mencoba lagi.');
+                completed++; redirect=data.redirect;
+            }
+            window.location.assign(redirect || window.location.href);
+        } catch (error) {
+            status.textContent = `${completed} foto berhasil disimpan. ${error.message}`;
+            // Remove only confirmed successes so retries cannot duplicate them.
+            const pending = new DataTransfer(); files.slice(completed).forEach(file=>pending.items.add(file));
+            input.files=pending.files; input.dispatchEvent(new Event('change',{bubbles:true}));
+        } finally { form.dataset.uploading = 'false'; }
+    });
+});
+
 /*
 |--------------------------------------------------------------------------
 | PHOTO PICKER - KAMERA / GALERI
@@ -78,8 +116,9 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 		/*
 		 * Tutup menu Kamera / Galeri.
 		 */
-		document.querySelectorAll('[data-photo-menu]').forEach((menu) => {
-			menu.hidden = true;
+		document.querySelectorAll('[data-photo-menu]').forEach((button) => {
+			const menu = document.getElementById(button.dataset.photoMenu);
+			if (menu) menu.hidden = true;
 		});
 	});
 });
@@ -109,7 +148,9 @@ document.querySelectorAll('[data-image-preview]').forEach((input) => {
 		}
 
 		if (image) {
+			if (image.dataset.objectUrl) URL.revokeObjectURL(image.dataset.objectUrl);
 			image.src = URL.createObjectURL(file);
+			image.dataset.objectUrl = image.src;
 		}
 
 		if (fileName) {

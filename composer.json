@@ -12,6 +12,7 @@
         "php": "^8.3",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.0",
         "maatwebsite/excel": "^4.0"
     },
     "require-dev": {
@@ -85,6 +86,9 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
+        },
+        "platform": {
+            "php": "8.3.33"
         }
     },
     "minimum-stability": "stable",

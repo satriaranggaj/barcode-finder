@@ -143,9 +143,15 @@ class AdminUserTest extends TestCase
 
     public function test_regular_admin_can_add_designs_without_removing_existing_photos(): void
     {
+        config(['retrieval.driver' => 'legacy']);
         Storage::fake('public');
         Http::preventStrayRequests();
         Http::fake([rtrim(config('services.ai.url'), '/').'/embed' => Http::response(['embedding' => [0.1, 0.2]])]);
+        $prepared = UploadedFile::fake()->image('prepared.jpg');
+        Http::fake([rtrim(config('services.ai.url'), '/').'/prepare' => Http::response([
+            'status' => 'optimized', 'extension' => 'jpg',
+            'master' => base64_encode(file_get_contents($prepared->getRealPath())),
+        ])]);
         $admin = User::factory()->create(['role' => 'admin']);
         $product = Product::create(['sku' => 'UPLOAD-1']);
         $existing = $product->photos()->create(['path' => 'products/existing.jpg']);
@@ -161,7 +167,7 @@ class AdminUserTest extends TestCase
         foreach ($product->photos as $photo) {
             Storage::disk('public')->assertExists($photo->path);
         }
-        Http::assertSentCount(2);
+        Http::assertSentCount(4);
     }
 
     public function test_regular_admin_can_delete_only_the_selected_design(): void

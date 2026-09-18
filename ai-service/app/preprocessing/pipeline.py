@@ -13,7 +13,20 @@ class InvalidImage(ValueError):
     pass
 
 
-def decode_image(data: bytes, max_bytes: int, max_pixels: int) -> Image.Image:
+def flatten_alpha(image: Image.Image, background=(255, 255, 255)) -> Image.Image:
+    """Composite any transparency over a solid background and return RGB.
+
+    A plain convert('RGB') discards the alpha channel without blending, which
+    surfaces hidden RGB values under transparent pixels. Compositing first keeps
+    WebP masters and AI inputs free of black fringes on transparent PNGs.
+    """
+    if image.mode == 'RGB':
+        return image
+    canvas = Image.new('RGBA', image.size, (*background, 255))
+    return Image.alpha_composite(canvas, image.convert('RGBA')).convert('RGB')
+
+
+def decode_image(data: bytes, max_bytes: int, max_pixels: int, memory_mb: int = 256) -> Image.Image:
     if not data or len(data) > max_bytes:
         raise InvalidImage('Empty image or upload exceeds MAX_BYTES')
     try:
@@ -26,8 +39,16 @@ def decode_image(data: bytes, max_bytes: int, max_pixels: int) -> Image.Image:
                     raise InvalidImage('Image exceeds MAX_PIXELS')
                 probe.verify()
             with Image.open(BytesIO(data)) as source:
+                # Bound peak decode/re-encode memory independently of upload bytes.
+                # JPEG can decode at a smaller native scale without allocating full pixels.
+                budget = memory_mb * 1024 * 1024
+                if source.width*source.height*12 + len(data)*2 + 16*1024*1024 > budget:
+                    if source.format == 'JPEG':
+                        source.draft('RGB', (max(1,source.width//2), max(1,source.height//2)))
+                    if source.width*source.height*12 + len(data)*2 + 16*1024*1024 > budget:
+                        raise InvalidImage('Image exceeds safe processing memory; reduce image dimensions')
                 source.load()  # Detect truncated/corrupted pixels, not just a valid header.
-                return ImageOps.exif_transpose(source).convert('RGB')
+                return flatten_alpha(ImageOps.exif_transpose(source))
     except (OSError, ValueError, UnidentifiedImageError, Image.DecompressionBombWarning,
             Image.DecompressionBombError) as exc:
         raise InvalidImage('Invalid, corrupt or oversized image') from exc
@@ -53,7 +74,7 @@ class Preprocessor:
     def prepare(self, source: Image.Image, mode: str = 'object') -> PreparedImage:
         if mode not in ('original', 'object'):
             raise ValueError('Invalid preprocessing mode')
-        image = ImageOps.exif_transpose(source).convert('RGB')
+        image = flatten_alpha(ImageOps.exif_transpose(source))
         image.thumbnail((self.max_side, self.max_side), Image.Resampling.LANCZOS)
         reason, actual = 'original_requested', 'original'
         if mode == 'object':

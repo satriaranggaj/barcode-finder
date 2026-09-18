@@ -2,44 +2,84 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\JsonResponse;
+use App\Models\ProductPhoto;
+use App\Services\CropCoordinates;
+use App\Services\RetrievalClient;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class ObjectSelectionController extends Controller
 {
-    public function propose(Request $request): JsonResponse
+    public function propose(Request $request)
     {
-        $validated = $request->validate([
-            'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
-        ]);
-
+        $request->validate(['image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240']]);
         try {
-            $response = Http::timeout(30)
-                ->attach('image', fopen($validated['image']->getRealPath(), 'r'), $validated['image']->getClientOriginalName())
-                ->post(rtrim((string) config('services.ai.url'), '/').'/select');
-
-            if (!$response->successful()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Auto-selection service tidak tersedia.',
-                    'boxes' => [],
-                ], 503);
+            $data = app(RetrievalClient::class)->send('select', $request->file('image'));
+            $candidates = [];
+            foreach (array_slice($data['candidates'] ?? [], 0, 5) as $candidate) {
+                if (! is_array($candidate)) {
+                    continue;
+                }
+                $candidates[] = [
+                    'box' => $candidate['box'] ?? $candidate,
+                    'source' => is_string($candidate['source'] ?? null) ? $candidate['source'] : 'unknown',
+                    'score' => is_numeric($candidate['score'] ?? null) ? (float) $candidate['score'] : null,
+                ];
             }
-
-            $data = $response->json();
+            if ($candidates === [] && isset($data['boxes']) && is_array($data['boxes'])) {
+                // Legacy backend without candidate metadata: keep boxes working.
+                $candidates = array_map(fn ($box) => ['box' => $box, 'source' => 'unknown', 'score' => null],
+                    array_slice($data['boxes'], 0, 5));
+            }
+            $boxes = [];
+            $validated = [];
+            foreach ($candidates as $candidate) {
+                try {
+                    $candidate['box'] = CropCoordinates::validate($candidate['box']);
+                } catch (ValidationException) {
+                    continue;
+                }
+                if ($candidate['box'] === null) {
+                    continue;
+                }
+                $validated[] = $candidate;
+                $boxes[] = $candidate['box'];
+            }
 
             return response()->json([
                 'success' => true,
-                'boxes' => $data['boxes'] ?? [],
-                'message' => count($data['boxes'] ?? []) > 0 ? 'Objek terdeteksi.' : 'Tidak ada objek yang terdeteksi. Silakan pilih area secara manual.',
+                'boxes' => $boxes,
+                'candidates' => $validated,
+                'reason' => $data['reason'] ?? 'unknown',
             ]);
-        } catch (\Throwable $exception) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Layanan seleksi otomatis sedang tidak tersedia.',
-                'boxes' => [],
-            ], 503);
+        } catch (\Throwable $error) {
+            return response()->json(['success' => false, 'boxes' => [], 'candidates' => [], 'reason' => 'selection_unavailable']);
         }
+    }
+
+    public function edit(ProductPhoto $photo)
+    {
+        return view('products.selection', compact('photo'));
+    }
+
+    public function update(Request $request, ProductPhoto $photo)
+    {
+        $request->validate(['crop_json' => ['nullable', 'json'], 'selection_source' => ['required', Rule::in(CropCoordinates::SELECTION_MODES)]]);
+        $crop = CropCoordinates::fromJson($request->input('crop_json'));
+        $photo->update(['crop' => $crop,
+            'selection_source' => $crop ? $request->input('selection_source') : 'full', 'selection_verified' => true, 'index_status' => 'pending']);
+
+        return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. Rebuild indeks untuk menerapkan perubahan reference.');
+    }
+
+    public function image(ProductPhoto $photo)
+    {
+        $disk = Storage::disk($photo->diskName());
+        $path = $photo->master_path ?: $photo->path;
+        abort_unless($disk->exists($path), 404);
+
+        return $disk->response($path, null, ['Cache-Control' => 'private, no-store']);
     }
 }

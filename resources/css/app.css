@@ -24,3 +24,67 @@
 }
 
 main { animation: rise-in 500ms ease-out both; }
+
+/* Object selection editor — Google-Lens-style frame over the displayed image.
+   Layout is ASCII, colour runs top-to-bottom. Architectural rules mirror the
+   Layers-LEDGER vocabulary: scrim dims everything outside the crop, a white
+   frame outlines the object, corner brackets mark the draggable corners and a
+   label chip reports the crop size. Matching handles therefore render exactly
+   under their outlined anchor for any measurement. */
+.object-selection-editor { text-align: center; }
+.object-selection-stage { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+.object-selection-image { display: block; max-width: 100%; max-height: 60vh; }
+.object-selection-overlay { position: absolute; inset: 0; }
+
+/* Frame: white outline plus a single huge spread shadow that dims the rest of
+   the photo (no extra element, no per-pixel paint cost). */
+.object-selection-box {
+    position: absolute;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    border-radius: 10px;
+    box-shadow: 0 0 0 99999px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.35);
+    cursor: move;
+}
+.object-selection-box::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+    pointer-events: none;
+}
+
+/* Cropping brackets: four thick curved corner marks, Lens-style, drawn from
+   the frame's own corners with pseudo elements so no extra DOM nodes are
+   needed. Edges and corners are dragged through generous invisible grab
+   zones (see HANDLE_HIT_RADIUS); no visible handles. */
+.object-selection-bracket {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border: 6px solid #ffffff;
+    pointer-events: none;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+.object-selection-bracket-nw { top: -4px; left: -4px; border-right: 0; border-bottom: 0; border-top-left-radius: 12px; }
+.object-selection-bracket-ne { top: -4px; right: -4px; border-left: 0; border-bottom: 0; border-top-right-radius: 12px; }
+.object-selection-bracket-sw { bottom: -4px; left: -4px; border-right: 0; border-top: 0; border-bottom-left-radius: 12px; }
+.object-selection-bracket-se { bottom: -4px; right: -4px; border-left: 0; border-top: 0; border-bottom-right-radius: 12px; }
+
+/* Size chip above the frame, like the reference crop label. */
+.object-selection-label {
+    position: absolute;
+    left: 0;
+    bottom: 100%;
+    margin-bottom: 8px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.85);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    line-height: 1.5;
+    pointer-events: none;
+}

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\RetrievalConfig;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +20,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Unit tests boot with intentionally partial config and cover
+        // validation directly; every other entry point validates eagerly.
+        if (! $this->app->runningUnitTests()) {
+            RetrievalConfig::validate();
+        }
     }
 }

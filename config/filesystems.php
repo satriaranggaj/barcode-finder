@@ -7,9 +7,11 @@ return [
     | Default Filesystem Disk
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default filesystem disk that should be used
-    | by the framework. The "local" disk, as well as a variety of cloud
-    | based disks are available to your application for file storage.
+    | Development runs with FILESYSTEM_DISK=local; everything stays on the
+    | machine (catalog on the public disk, private/temporary data under
+    | storage/app/private). Production points the image disks at the S3-
+    | compatible object storage below and keeps only transient query photos,
+    | index builds and processing files on the server.
     |
     */
 
@@ -20,9 +22,19 @@ return [
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
-    | Below you may configure as many filesystem disks as necessary, and you
-    | may even configure multiple disks for the same driver. Examples for
-    | most supported storage drivers are configured here for reference.
+    | Storage layout:
+    |
+    |   public           Catalog images in development (master/catalog/
+    |                    thumbnail). Selected via PRODUCT_IMAGE_DISK.
+    |   local            Private app data: pending query images
+    |                    (search-pending/), index builds, dev fallback for
+    |                    verified/training references (TRAINING_IMAGE_DISK).
+    |   s3               Object storage for production: catalog images
+    |                    (PRODUCT_IMAGE_DISK=s3) and verified/training
+    |                    references (TRAINING_IMAGE_DISK=s3). Works with
+    |                    Cloudflare R2 and any S3-compatible provider via
+    |                    AWS_ENDPOINT; credentials come only from the
+    |                    environment, never from code.
     |
     | Supported drivers: "local", "ftp", "sftp", "s3"
     |
@@ -51,7 +63,7 @@ return [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
+            'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),

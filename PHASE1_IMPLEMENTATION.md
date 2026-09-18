@@ -1,5 +1,12 @@
 # Phase 1 Implementation: Auto Object Selection UI & Storage Crop Coordinates
 
+> **STATUS: HISTORICAL / SUPERSEDED (prompt 01–43 selesai).**
+> Dokumen ini merekam pekerjaan tahap awal 15 September 2026 dan **tidak lagi
+> menggambarkan arsitektur final**. Rujukan terkini: `docs/final-architecture.md`,
+> `docs/object-selection-ui.md`, `docs/object-selection-backend.md`,
+> `docs/object-selection-reference.md`, `docs/visual-sku-workflow.md`.
+> Koreksi terhadap detail usang ada di bagian "Koreksi pasca-tahap-1" di bawah.
+
 **Date:** 2026-09-15  
 **Status:** ✅ Completed  
 **Commit Base:** b80099e
@@ -193,6 +200,33 @@ Multiple boxes may be returned for future multi-object support; current UI uses 
 
 ---
 
-**Implementation completed by:** AI Assistant  
-**Review status:** Pending human review  
-**Deployment readiness:** Ready for staging environment testing
+## Koreksi pasca-tahap-1 (faktual, per 18 September 2026)
+
+Detail di atas sebagian sudah tidak berlaku. Yang benar pada working tree saat ini:
+
+1. **Validator crop.** `app/Services/CropCoordinateValidator.php` **sudah dihapus**.
+   Satu-satunya sumber kontrak adalah `app/Services/CropCoordinates.php`, dengan
+   `MIN_EXTENT = 0.01` (bukan 5%), `TOLERANCE = 0.0001`, dan validasi overflow
+   `x + width <= 1` / `y + height <= 1`. Mirror Python:
+   `ai-service/app/preprocessing/selection.py`.
+2. **Route.** Tidak ada route `/admin/object-selection`. Jalur yang terdaftar:
+   `POST /object-selection` (name `object-selection.propose`, `throttle:20,1`),
+   `POST /search` (`products.search`), `POST /search-feedback`
+   (`search.feedback`, auth). `/object-selection` mem-proxy FastAPI
+   `POST /select`; FastAPI juga menyediakan `/search`, `/prepare`, `/embed`.
+3. **Field form.** Upload admin memakai `crop_coordinates[]` +
+   `selection_sources[]` (JSON per foto); edit foto tunggal memakai
+   `crop_json` + `selection_source`. Keduanya divalidasi lewat
+   `CropCoordinates`.
+4. **Multi-candidate.** Pemilih kandidat ("Objek 1..N") sudah ada di
+   `resources/js/object-selection.js` + `resources/js/selection/state.js`
+   (event `candidate`), jadi keterbatasan "first box only" sudah tidak berlaku.
+5. **Touch/mobile.** Editor memakai pointer events di
+   `resources/js/selection/editor.js` (drag + 8 handle), diuji lewat 35 test
+   vitest (`tests/js/state.test.js`, `tests/js/geometry.test.js`). Verifikasi
+   perangkat fisik tetap belum dilakukan.
+6. **Padding.** Default 8% dan dikonfigurasi via `SELECTION_PADDING`
+   (`ai-service/app/config.py`), bukan konstanta JS.
+7. **Representasi.** Crop disimpan sebagai metadata (`product_photos.crop` JSON
+   + `selection_source` + `selection_verified`); tidak ada file crop permanen —
+   crop direkonstruksi dari master + koordinat.

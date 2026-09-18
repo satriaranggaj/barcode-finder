@@ -25,7 +25,7 @@ class ModelSmokeTest(unittest.TestCase):
         result, _ = service.embed(Image.new('RGB', (100, 180), (220, 30, 20)), 'original')
         self.assertEqual(set(result), {'siglip', 'dino'})
         for model, crops in result.items():
-            self.assertEqual(len(crops), 6)
+            self.assertEqual(set(crops), {'global','context','center','left','right','top','bottom'})
             self.assertEqual(crops['global'].size, 768 if model == 'siglip' else 384)
             for vector in crops.values():
                 self.assertEqual(vector.dtype, np.float32)

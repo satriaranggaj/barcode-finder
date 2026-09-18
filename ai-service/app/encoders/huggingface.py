@@ -14,6 +14,8 @@ class HuggingFaceEncoder(ImageEncoder):
         self.device = device
         self.batch_size = batch_size
         self.kind = kind
+        self.model_id, self.revision = model_id, revision
+        self.tokenizer = None
         self.processor = AutoImageProcessor.from_pretrained(model_id, revision=revision, use_fast=False)
         self.model = AutoModel.from_pretrained(model_id, revision=revision).to(device).eval()
         # Record resolved revision, not a moving branch name, to reject incompatible indexes.
@@ -37,3 +39,17 @@ class HuggingFaceEncoder(ImageEncoder):
                         features = features.pooler_output
             batches.append(features.float().cpu().numpy())
         return normalize(np.concatenate(batches, axis=0))
+
+    def encode_text(self, text: str) -> np.ndarray:
+        if self.kind != 'image_features':
+            raise ValueError('Encoder does not support paired image/text features')
+        if self.tokenizer is None:
+            from transformers import AutoTokenizer
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, revision=self.identity['revision'])
+        length = self.model.config.text_config.max_position_embeddings
+        inputs = self.tokenizer([text], padding='max_length', truncation=True, max_length=length, return_tensors='pt')
+        inputs = {key:value.to(self.device) for key,value in inputs.items()}
+        with self.torch.inference_mode():
+            vector = self.model.get_text_features(**inputs)
+            if hasattr(vector,'pooler_output'): vector=vector.pooler_output
+        return normalize(vector[0].float().cpu().numpy())

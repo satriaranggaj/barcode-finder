@@ -27,10 +27,21 @@ class ProductsImportTest extends TestCase
             $table->text('embedding')->nullable();
             $table->timestamps();
         });
+        Schema::create('product_attributes', function ($table): void {
+            $table->id();
+            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->string('key', 64);
+            $table->string('value', 255);
+            $table->string('source', 32);
+            $table->string('rule', 64)->nullable();
+            $table->float('confidence')->nullable();
+            $table->timestamps();
+        });
     }
 
     protected function tearDown(): void
     {
+        Schema::dropIfExists('product_attributes');
         Schema::dropIfExists('products');
 
         parent::tearDown();
