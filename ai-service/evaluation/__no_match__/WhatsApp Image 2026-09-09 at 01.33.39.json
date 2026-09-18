@@ -1,1 +1,11 @@
-{"relevant_skus": [], "capture_group": "dumbbells-store-20260909", "tags": ["handheld", "store-background", "no-match"]}
+{
+    "relevant_skus":  [
+                          "8952067"
+                      ],
+    "capture_group":  "dumbbells-store-20260909",
+    "tags":  [
+                 "handheld",
+                 "store-background",
+                 "no-match"
+             ]
+}
