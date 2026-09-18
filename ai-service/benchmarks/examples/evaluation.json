@@ -1,0 +1,41 @@
+{
+  "synthetic": true,
+  "evaluation_signature": {
+    "pipeline": "EXAMPLE-NOT-FOR-RUNTIME"
+  },
+  "gate_applied": false,
+  "queries": [
+    {
+      "query": "evaluation/positive.jpg",
+      "photo_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+      "capture_group": "evaluation-positive-session",
+      "relevant_skus": [
+        "EXAMPLE-A"
+      ],
+      "latency_ms": 120,
+      "results": [
+        {
+          "sku": "EXAMPLE-A",
+          "score": 0.83
+        },
+        {
+          "sku": "EXAMPLE-B",
+          "score": 0.4
+        }
+      ]
+    },
+    {
+      "query": "evaluation/negative.jpg",
+      "photo_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+      "capture_group": "evaluation-negative-session",
+      "relevant_skus": [],
+      "latency_ms": 180,
+      "results": [
+        {
+          "sku": "EXAMPLE-B",
+          "score": 0.55
+        }
+      ]
+    }
+  ]
+}

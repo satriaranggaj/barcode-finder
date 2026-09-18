@@ -1,0 +1,41 @@
+{
+  "synthetic": true,
+  "evaluation_signature": {
+    "pipeline": "EXAMPLE-NOT-FOR-RUNTIME"
+  },
+  "gate_applied": false,
+  "queries": [
+    {
+      "query": "tuning/positive.jpg",
+      "photo_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+      "capture_group": "tuning-positive-session",
+      "relevant_skus": [
+        "EXAMPLE-A"
+      ],
+      "latency_ms": 120,
+      "results": [
+        {
+          "sku": "EXAMPLE-A",
+          "score": 0.83
+        },
+        {
+          "sku": "EXAMPLE-B",
+          "score": 0.4
+        }
+      ]
+    },
+    {
+      "query": "tuning/negative.jpg",
+      "photo_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+      "capture_group": "tuning-negative-session",
+      "relevant_skus": [],
+      "latency_ms": 180,
+      "results": [
+        {
+          "sku": "EXAMPLE-B",
+          "score": 0.55
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "purpose": "Historical labelled evidence only; missing query images/hashes. Not a tuning dataset.",
+  "cases": [
+    {"name": "sunglasses", "relevant_description": "SUNGLASSES", "irrelevant": [{"description": "SCREWDRIVER", "score": 0.77}, {"description": "SCREWDRIVER", "score": 0.75}]},
+    {"name": "lunch-box", "relevant": [{"sku": "8978322", "description": "LUNCH BOX", "score": 1.0}, {"sku": "8972198", "description": "LUNCH BOX", "score": 0.79}], "irrelevant": [{"sku": "9079588", "description": "SCREWDRIVER", "score": 0.74}, {"sku": "9079590", "description": "SCREWDRIVER", "score": 0.72}]},
+    {"name": "dumbbell-without-reference", "relevant_skus": [], "expected_result_count": 0}
+  ]
+}

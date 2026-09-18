@@ -1,0 +1,58 @@
+{
+  "synthetic": true,
+  "scope": "Object selection pipeline only; excludes image decode and model inference",
+  "padding": 0.08,
+  "runs": 20,
+  "scenarios": {
+    "clean": {
+      "median_latency_ms": 264.5698999913293,
+      "p95_latency_ms": 309.4963450028445,
+      "boxes_found": [
+        0
+      ],
+      "reason": [
+        "foreground_uncertain"
+      ]
+    },
+    "single_object": {
+      "median_latency_ms": 273.12725000228966,
+      "p95_latency_ms": 330.60417999586207,
+      "boxes_found": [
+        1
+      ],
+      "reason": [
+        "foreground_proposal"
+      ]
+    },
+    "cluttered": {
+      "median_latency_ms": 329.8668000061298,
+      "p95_latency_ms": 365.93286499846727,
+      "boxes_found": [
+        0
+      ],
+      "reason": [
+        "foreground_uncertain"
+      ]
+    },
+    "small_object": {
+      "median_latency_ms": 254.41280000814004,
+      "p95_latency_ms": 303.9198450052936,
+      "boxes_found": [
+        0
+      ],
+      "reason": [
+        "foreground_uncertain"
+      ]
+    },
+    "photo_like": {
+      "median_latency_ms": 1189.025549996586,
+      "p95_latency_ms": 1363.1668649970381,
+      "boxes_found": [
+        0
+      ],
+      "reason": [
+        "foreground_uncertain"
+      ]
+    }
+  }
+}
