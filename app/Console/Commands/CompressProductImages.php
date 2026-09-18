@@ -34,10 +34,20 @@ class CompressProductImages extends Command
         $processed = $skipped = $failed = 0;
         $last = $after;
         try {
-            foreach (ProductPhoto::where('id', '>', $after)->where('id', '<=', $through)->lazyById($chunk) as $photo) {
+            foreach (ProductPhoto::with('product')->where('id', '>', $after)->where('id', '<=', $through)->lazyById($chunk) as $photo) {
                 $last = $photo->id;
+                $tag = 'ID '.$photo->id.' / SKU '.($photo->product->sku ?? '?');
                 if ($photo->optimization_status === 'optimized' || (! $this->option('retry-preserved') && str_starts_with($photo->optimization_status ?? '', 'preserved_'))) {
                     $skipped++;
+
+                    continue;
+                }
+                // No source image in database (null/empty path): never call
+                // the AI service, never fabricate data — skip, don't fail.
+                $source = $photo->master_path ?: $photo->path;
+                if (! is_string($source) || $source === '') {
+                    $skipped++;
+                    $this->line($tag.': SKIPPED — no source image');
 
                     continue;
                 }
@@ -49,7 +59,6 @@ class CompressProductImages extends Command
                 $temporary = tempnam(sys_get_temp_dir(), 'lensku-');
                 $stored = null;
                 try {
-                    $source = $photo->master_path ?: $photo->path;
                     $read = Storage::disk($photo->diskName())->readStream($source);
                     if (! is_resource($read)) {
                         throw new \RuntimeException('Missing source image');
@@ -62,6 +71,12 @@ class CompressProductImages extends Command
                     } finally {
                         fclose($read);
                         fclose($write);
+                    }
+                    // Readable but zero bytes: corrupt storage content, not a
+                    // missing image. Fail loudly instead of sending an empty
+                    // body the AI must reject with 422.
+                    if (filesize($temporary) === 0) {
+                        throw new \RuntimeException('Source image is empty');
                     }
                     $stored = app(ProductImages::class)->store(new UploadedFile($temporary, basename($source), null, null, true));
                     if ($stored['optimization_status'] !== 'optimized') {
@@ -86,7 +101,7 @@ class CompressProductImages extends Command
                         app(ProductImages::class)->discard($stored);
                     }
                     $failed++;
-                    $this->error('ID '.$photo->id.': '.$error->getMessage());
+                    $this->error($tag.': '.$error->getMessage());
                 } finally {
                     if (is_file($temporary)) {
                         unlink($temporary);

@@ -38,6 +38,13 @@ class RetrievalClient
                 'connect_timeout' => $connectTimeout, 'read_timeout' => $readTimeout]);
             throw RetrievalUnavailableException::offline($exception->getMessage());
         } catch (RequestException $exception) {
+            $status = $exception->response?->status() ?? 0;
+            // HTTP 4xx means the AI was reached but rejected the request
+            // (validation error) — not an unavailable service.
+            if ($status >= 400 && $status < 500) {
+                Log::warning('AI retrieval request rejected', ['endpoint' => $endpoint, 'status' => $status]);
+                throw RetrievalUnavailableException::invalidResponse('HTTP '.$status);
+            }
             Log::warning('AI retrieval HTTP error', ['endpoint' => $endpoint, 'status' => $exception->response?->status()]);
             throw RetrievalUnavailableException::offline('HTTP '.$exception->response?->status() ?? 'error');
         } finally {
