@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -103,7 +104,25 @@ class CompressImagesTest extends TestCase
         $product = Product::create(['sku' => 'REJECTED']);
         Storage::disk('public')->put('products/bad.jpg', 'not-an-image');
         $product->photos()->create(['path' => 'products/bad.jpg', 'disk' => 'public']);
-        Http::fake([$this->prepareUrl => Http::response([], 422)]);
+        Http::fake([$this->prepareUrl => Http::response(['detail' => 'Upload exceeds MAX_BYTES'], 422)]);
+
+        // Artisan::output concatenates the full text: Mockery-based
+        // expectsOutputToContain matches per write-chunk, and Symfony wraps
+        // long error lines across chunks.
+        $code = Artisan::call('products:compress-images');
+        $output = Artisan::output();
+        $this->assertSame(1, $code);
+        $this->assertStringContainsString('tidak valid', $output);
+        $this->assertStringNotContainsString('tidak tersedia', $output);
+        $this->assertStringContainsString('Upload exceeds MAX_BYTES', $output);
+    }
+
+    public function test_ai_422_without_json_body_stays_safe(): void
+    {
+        $product = Product::create(['sku' => 'PLAIN']);
+        Storage::disk('public')->put('products/plain.jpg', 'not-an-image');
+        $product->photos()->create(['path' => 'products/plain.jpg', 'disk' => 'public']);
+        Http::fake([$this->prepareUrl => Http::response('oops', 422, ['Content-Type' => 'text/plain'])]);
 
         $this->artisan('products:compress-images')
             ->expectsOutputToContain('tidak valid')

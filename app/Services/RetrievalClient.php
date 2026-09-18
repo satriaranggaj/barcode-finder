@@ -40,10 +40,12 @@ class RetrievalClient
         } catch (RequestException $exception) {
             $status = $exception->response?->status() ?? 0;
             // HTTP 4xx means the AI was reached but rejected the request
-            // (validation error) — not an unavailable service.
+            // (validation error) — not an unavailable service. Include the
+            // safe server detail (e.g. why /prepare refused the image) so
+            // corrupt data stays diagnosable instead of a bare status code.
             if ($status >= 400 && $status < 500) {
                 Log::warning('AI retrieval request rejected', ['endpoint' => $endpoint, 'status' => $status]);
-                throw RetrievalUnavailableException::invalidResponse('HTTP '.$status);
+                throw RetrievalUnavailableException::invalidResponse('HTTP '.$status.self::rejectionDetail($exception));
             }
             Log::warning('AI retrieval HTTP error', ['endpoint' => $endpoint, 'status' => $exception->response?->status()]);
             throw RetrievalUnavailableException::offline('HTTP '.$exception->response?->status() ?? 'error');
@@ -88,6 +90,32 @@ class RetrievalClient
         Log::warning('AI retrieval contract violation', ['reason' => $reason]);
 
         throw RetrievalUnavailableException::invalidResponse($reason);
+    }
+
+    /**
+     * Extract a short human-readable reason from a 4xx body. Never throws,
+     * never leaks bytes: FastAPI errors are {"detail": "..."}; anything else
+     * is truncated plain text.
+     */
+    private static function rejectionDetail(RequestException $exception): string
+    {
+        try {
+            $body = (string) $exception->response?->getBody();
+        } catch (\Throwable) {
+            return '';
+        }
+        if ($body === '') {
+            return '';
+        }
+        try {
+            $decoded = json_decode($body, true, 3, JSON_THROW_ON_ERROR);
+            $snippet = is_array($decoded) ? (string) ($decoded['detail'] ?? '') : $body;
+        } catch (\Throwable) {
+            $snippet = $body;
+        }
+        $snippet = trim(preg_replace('/\s+/', ' ', $snippet) ?? '');
+
+        return $snippet === '' ? '' : ': '.mb_strimwidth($snippet, 0, 160, '…');
     }
 
     private function connectTimeout(): int
