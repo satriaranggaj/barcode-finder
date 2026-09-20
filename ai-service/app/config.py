@@ -55,6 +55,15 @@ class Settings:
     ocr_min_confidence: int = 80
     relevance_policy: str = ''
     processing_memory_mb: int = 256
+    # Detail-end view (bottom 30% of a true object box) for fine tips and
+    # markings that global crops wash out. 0 disables it entirely: no extra
+    # vectors, no index impact, byte-identical behaviour to before.
+    tip_detail_weight: float = 0.0
+    # Crop-proportion compatibility (long/short ratio, rotation-invariant) for
+    # size variants the pixels cannot separate (4" vs 6" same handle). Uses
+    # stored boxes only — no new vectors, no rebuild. Secondary evidence:
+    # must stay below 0.5 so visual similarity keeps the majority.
+    proportion_weight: float = 0.0
     # Accepted covered-area window for object proposals: smaller regions are
     # noise, near-full-frame boxes are not a usable crop.
     selection_min_area: float = .02
@@ -92,6 +101,10 @@ class Settings:
             raise ValueError('SIGLIP_WEIGHT + DINO_WEIGHT must equal 1; weights must be nonnegative')
         if not 0 <= self.local_weight <= 1:
             raise ValueError('LOCAL_WEIGHT must be between 0 and 1')
+        if not 0 <= self.tip_detail_weight <= 1:
+            raise ValueError('TIP_DETAIL_WEIGHT must be between 0 and 1')
+        if not 0 <= self.proportion_weight < .5:
+            raise ValueError('PROPORTION_WEIGHT must keep visual evidence the majority')
         if not 0 <= self.ambiguity_margin <= 2:
             raise ValueError('Ambiguity margin must be between 0 and 2')
         if not -1 <= self.medium_score <= self.high_score <= 1 or not 0 <= self.high_gap <= 2:

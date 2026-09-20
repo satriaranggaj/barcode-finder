@@ -45,6 +45,26 @@ class ObjectRetrievalTests(unittest.TestCase):
         self.assertIsNone(info['selection_used'])
         self.assertTrue(all(call.args[1] == 'original' for call in prepare.call_args_list))
 
+    def test_small_auto_box_falls_back_to_full_but_manual_is_honoured(self):
+        # Handle-only fragment (0.29 x 0.47 = 0.136 < 0.15): as an auto box
+        # it would amputate the tip, so embed falls back to full image.
+        fragment = BoundingBox(0.40, 0.03, 0.29, 0.47)
+        _, auto = self.service.embed(Image.new('RGB', (64, 64), 'red'), 'object',
+                                     fragment, selection_mode='auto')
+        self.assertIsNone(auto['selection_used'])
+        self.assertEqual(auto['reason'], 'small_proposal_fallback')
+        self.assertFalse(auto['object_representation'])
+        # An explicit manual crop is the user's intent: always honoured.
+        _, manual = self.service.embed(Image.new('RGB', (64, 64), 'red'), 'object',
+                                       fragment, selection_mode='manual')
+        self.assertIsNotNone(manual['selection_used'])
+        self.assertEqual(manual['reason'], 'manual_selection')
+        # A whole-tool auto box still passes through untouched.
+        whole = BoundingBox(0.39, 0.08, 0.25, 0.84)
+        _, kept = self.service.embed(Image.new('RGB', (64, 64), 'red'), 'object',
+                                     whole, selection_mode='auto')
+        self.assertIsNotNone(kept['selection_used'])
+
     def test_frozen_policy_rejects_missing_model(self):
         self.service.policy = {'threshold':.8}
         with patch.object(self.service.encoders['dino'], 'encode_images', side_effect=RuntimeError('unavailable')):
@@ -99,7 +119,9 @@ class ObjectRetrievalTests(unittest.TestCase):
         for field in ('drive','measurement','size','color','quantity','model'):
             self.assertIn(field,attributes)
         self.assertIsNone(compatibility({},attributes))
-        self.assertEqual(compatibility({'drive':['PH1']},{'drive':['PH2']}),0)
+        # Same tip family (PH1 vs PH2) is partial evidence, not zero.
+        self.assertEqual(compatibility({'drive':['PH1']},{'drive':['PH2']}),0.5)
+        self.assertEqual(compatibility({'drive':['PH1']},{'drive':['FLAT']}),0.0)
         image = Image.new('RGB',(64,64))
         self.assertEqual(DisabledOCR().extract_text(image),[])
         self.assertEqual(TesseractOCR('nonexistent-lensku-ocr').extract_text(image),[])

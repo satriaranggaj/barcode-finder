@@ -92,7 +92,12 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                             raise ValueError(f'Changed image/metadata: {image_id}; use --rebuild')
                         skipped += 1
                     else:
-                        vectors, info = service.embed(image, service.settings.preprocessing_mode, box, extra.get('description') or '')
+                        # Forward the stored selection source so explicit manual
+                        # crops stay honoured by the small-proposal gate, while
+                        # stored auto crops get the same fallback treatment as
+                        # live serving proposals (query/reference consistency).
+                        vectors, info = service.embed(image, service.settings.preprocessing_mode, box, extra.get('description') or '',
+                                                      selection_mode=extra.get('selection_source') if box else None)
                         used_box = box
                         if used_box is None and info.get('selection_used'):
                             # Auto proposal actually selected a region: record it so

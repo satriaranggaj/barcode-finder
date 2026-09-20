@@ -31,6 +31,8 @@ class SearchCandidate(BaseModel):
     siglip_score: float | None = Field(default=None, ge=-1.0, le=1.0)
     dino_score: float | None = Field(default=None, ge=-1.0, le=1.0)
     local_score: float | None = Field(default=None, ge=-1.0, le=1.0)
+    tip_score: float | None = Field(default=None, ge=-1.0, le=1.0)
+    proportion_score: float | None = Field(default=None, ge=0.0, le=1.0)
     matched_images: int = Field(ge=1)
     matched_image_ids: list[str] = Field(default_factory=list)
 

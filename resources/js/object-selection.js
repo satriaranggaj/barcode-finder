@@ -1,18 +1,37 @@
 /**
  * Object selection flow for search and upload forms.
  *
- * Flow: file pick -> render editor -> request auto-selection -> overlay the
- * best proposal. The user can drag, resize, pick another candidate, reset to
- * the auto proposal or switch to the full image; the selected crop is stored
- * in hidden inputs as normalized 0..1 coordinates and forwarded with the form.
+ * Flow: file pick -> render preview instantly -> request auto-selection in
+ * parallel -> overlay the best proposal automatically. No candidate buttons:
+ * the single best box is applied silently; the user can still drag or resize
+ * it directly on the preview. The selected crop is stored in hidden inputs
+ * as normalized 0..1 coordinates and forwarded with the form.
  * Auto-selection failure never blocks the form — full image or a manual box
  * always work.
+ *
+ * Responsiveness: preview and fetch start together (fetch never waits for
+ * <img> decode), each file runs independently in parallel, and an initial
+ * full-image state keeps the form submittable while detection runs.
  */
 import { ObjectSelectionEditor } from './selection/editor.js';
 import { validBox } from './selection/geometry.js';
 import { createState, transition, toWire } from './selection/state.js';
 
 const SELECT_TIMEOUT_MS = 15000;
+
+// Boxes smaller than this are fragments (e.g. handle without shaft/tip),
+// not objects — cropping to them destroys the evidence. Mirrors
+// MIN_AUTO_COVERAGE in ai-service/app/search/service.py; keep in sync.
+const MIN_AUTO_COVERAGE = 0.15;
+
+function normalizeCandidates(data) {
+    // Laravel returns candidates ({box, source, score}); keep the
+    // legacy boxes-only shape working as a fallback. Only the best
+    // (first, already ranked server-side) is used — no picker UI.
+    const fromCandidates = (data.candidates || []).filter((candidate) => validBox(candidate?.box));
+    if (fromCandidates.length || data.candidates) return fromCandidates;
+    return (data.boxes || []).filter(validBox).map((box) => ({ box }));
+}
 
 export function initializeObjectSelections() {
     document.querySelectorAll('[data-object-selection]').forEach((container) => {
@@ -24,18 +43,16 @@ export function initializeObjectSelections() {
         const template = container.innerHTML;
         const states = new WeakMap();
         let revision = 0;
-        let controller;
+        let liveControllers = [];
 
         const render = async (files) => {
             const current = ++revision;
-            controller?.abort();
-            controller = new AbortController();
-            const requestController = controller;
+            liveControllers.forEach((c) => { try { c.abort(); } catch { /* noop */ } });
+            liveControllers = [];
             container.replaceChildren();
             container.hidden = !files.length;
-            let selectionTasks = Promise.resolve();
 
-            for (const [index, file] of files.entries()) {
+            files.forEach((file, index) => {
                 const panel = document.createElement('div');
                 panel.innerHTML = template;
                 container.append(panel);
@@ -64,60 +81,72 @@ export function initializeObjectSelections() {
                 const status = panel.querySelector('[data-selection-status]');
                 save();
 
-                const loaded = editor.loadImage(file).then(() => true, () => false);
-                selectionTasks = selectionTasks.then(async () => {
-                    try {
-                        if (!(await loaded)) throw new Error('Invalid preview');
+                // Preview starts instantly; the box renders as soon as the
+                // image decodes, using whatever state is newest at that time.
+                let imageReady = false;
+                editor.loadImage(file).then(
+                    () => {
                         if (current !== revision) return;
+                        imageReady = true;
                         editor.setBox(state.box);
-                        if (state.touched || state.auto) return;
-                        if (status) status.textContent = 'Mencari area objek… Anda tetap bisa menyesuaikan kotak sendiri.';
-                        const body = new FormData();
-                        body.append('image', file);
-                        const timeout = setTimeout(() => requestController.abort(), SELECT_TIMEOUT_MS);
-                        try {
-                            const response = await fetch(container.dataset.selectUrl || '/object-selection', {
-                                method: 'POST',
-                                body,
-                                signal: requestController.signal,
-                                headers: {
-                                    Accept: 'application/json',
-                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                                },
-                            });
-                            if (!response.ok) {
-                                if (status) status.textContent = 'Seleksi otomatis belum tersedia. Tarik kotak pada foto atau gunakan foto penuh.';
-                                return;
-                            }
-                            const data = await response.json();
-                            if (current !== revision) return;
-                            // Laravel returns candidates ({box, source, score}); keep the
-                            // legacy boxes-only shape working as a fallback.
-                            const candidates = (data.candidates || [])
-                                .filter((candidate) => validBox(candidate?.box))
-                                .concat(data.candidates ? [] : (data.boxes || []).filter(validBox).map((box) => ({ box })));
-                            const first = candidates[0]?.box;
-                            const reason = data.reason || 'unknown';
-                            if (status) {
-                                status.textContent = !first
-                                    ? 'Objek belum terdeteksi. Tarik kotak pada foto atau gunakan foto penuh.'
-                                    : reason === 'center_fallback'
-                                        ? 'Objek belum terdeteksi — kotak tengah dipilih. Sesuaikan sebelum mencari.'
-                                        : 'Kotak menyesuaikan otomatis. Geser untuk memindah, tarik sudut atau tepi untuk mengubah ukuran.';
-                            }
-                            if (first) {
-                                update(transition(state, { type: 'auto-applied', box: first }));
-                                editor.setBox(state.box);
-                            }
-                        } finally {
-                            clearTimeout(timeout);
-                        }
-                    } catch {
+                    },
+                    () => {
+                        if (current !== revision) return;
+                        if (status) status.textContent = 'Pratinjau gagal dimuat. Coba foto lain.';
+                    },
+                );
+
+                if (state.touched && state.box) {
+                    editor.setBox(state.box);
+                    return;
+                }
+                if (status) status.textContent = 'Mencari area objek… Anda tetap bisa menyesuaikan kotak sendiri.';
+
+                // Auto-selection runs in parallel with preview decode — never
+                // waiting for <img> load — so thin tools appear selected as
+                // soon as the backend answers.
+                const fileController = new AbortController();
+                liveControllers.push(fileController);
+                const timeout = setTimeout(() => { try { fileController.abort(); } catch { /* noop */ } }, SELECT_TIMEOUT_MS);
+                const body = new FormData();
+                body.append('image', file);
+                fetch(container.dataset.selectUrl || '/object-selection', {
+                    method: 'POST',
+                    body,
+                    signal: fileController.signal,
+                    headers: {
+                        Accept: 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                    },
+                }).then(async (response) => {
+                    if (current !== revision) return;
+                    if (!response.ok) {
                         if (status) status.textContent = 'Seleksi otomatis belum tersedia. Tarik kotak pada foto atau gunakan foto penuh.';
+                        return;
                     }
-                });
-            }
-            await selectionTasks;
+                    const data = await response.json();
+                    if (current !== revision) return;
+                    const candidates = normalizeCandidates(data);
+                    const first = candidates[0]?.box;
+                    const reason = data.reason || 'unknown';
+                    const usable = first && first.width * first.height >= MIN_AUTO_COVERAGE ? first : null;
+                    if (status) {
+                        status.textContent = !usable
+                            ? 'Menampilkan foto penuh.'
+                            : reason === 'center_fallback'
+                                ? 'Objek belum terdeteksi — kotak tengah dipilih. Sesuaikan sebelum mencari.'
+                                : 'Kotak menyesuaikan otomatis. Geser untuk memindah, tarik sudut atau tepi untuk mengubah ukuran.';
+                    }
+                    if (usable) {
+                        update(transition(state, { type: 'auto-applied', box: usable }));
+                        if (imageReady) editor.setBox(state.box);
+                    }
+                }).catch((error) => {
+                    if (error?.name === 'AbortError') return;
+                    if (current !== revision) return;
+                    if (status) status.textContent = 'Seleksi otomatis belum tersedia. Tarik kotak pada foto atau gunakan foto penuh.';
+                }).finally(() => clearTimeout(timeout));
+            });
         };
 
         input?.addEventListener('change', () => render([...input.files]));

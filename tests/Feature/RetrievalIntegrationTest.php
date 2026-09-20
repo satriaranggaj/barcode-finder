@@ -275,6 +275,57 @@ class RetrievalIntegrationTest extends TestCase
         Http::assertSent(fn ($request) => str_ends_with($request->url(), '/search'));
     }
 
+    public function test_sub_threshold_rows_are_hidden_but_prediction_stays_truthful(): void
+    {
+        Storage::fake('public');
+        Http::preventStrayRequests();
+        $high = Product::create(['sku' => 'HIGH-1']);
+        $highPhoto = $high->photos()->create(['path' => 'products/high.jpg', 'thumbnail_path' => 'thumbs/high.jpg']);
+        $low = Product::create(['sku' => 'LOW-1']);
+        $low->photos()->create(['path' => 'products/low.jpg', 'thumbnail_path' => 'thumbs/low.jpg']);
+        Http::fake([rtrim(config('services.ai.url'), '/').'/search' => Http::response([
+            'success' => true, 'confidence' => 'low', 'relevance_calibrated' => false,
+            'results' => [
+                ['rank' => 1, 'sku' => 'HIGH-1', 'product_id' => $high->id, 'image_id' => (string) $highPhoto->id, 'score' => 0.91],
+                ['rank' => 2, 'sku' => 'LOW-1', 'product_id' => $low->id, 'image_id' => 'x', 'score' => 0.35],
+            ],
+        ])]);
+        $response = $this->post(route('products.search'), ['image' => UploadedFile::fake()->image('query.jpg')]);
+        $response->assertOk()->assertViewHas('error', null)
+            ->assertViewHas('results', fn ($rows) => $rows->count() === 1 && $rows->first()->sku === 'HIGH-1')
+            ->assertViewHas('predictedSku', 'HIGH-1');
+    }
+
+    public function test_all_filtered_results_show_empty_state_with_hidden_prediction(): void
+    {
+        Http::preventStrayRequests();
+        Product::create(['sku' => 'LOW-1']);
+        Http::fake([rtrim(config('services.ai.url'), '/').'/search' => Http::response([
+            'success' => true, 'confidence' => 'low', 'relevance_calibrated' => false,
+            'results' => [['rank' => 1, 'sku' => 'LOW-1', 'product_id' => 1, 'image_id' => 'x', 'score' => 0.3]],
+        ])]);
+        $response = $this->post(route('products.search'), ['image' => UploadedFile::fake()->image('query.jpg')]);
+        $response->assertOk()->assertViewHas('error', null)
+            ->assertViewHas('results', fn ($rows) => $rows->isEmpty())
+            ->assertViewHas('predictedSku', 'LOW-1')
+            ->assertSee('Tidak ada produk yang cukup mirip');
+    }
+
+    public function test_display_threshold_is_configurable(): void
+    {
+        config(['services.ai.search_min_similarity' => 0.95]);
+        Storage::fake('public');
+        Http::preventStrayRequests();
+        $product = Product::create(['sku' => 'MATCH-1']);
+        $product->photos()->create(['path' => 'products/match.jpg', 'thumbnail_path' => 'thumbs/match.jpg']);
+        Http::fake([rtrim(config('services.ai.url'), '/').'/search' => Http::response([
+            'success' => true, 'confidence' => 'high', 'relevance_calibrated' => false,
+            'results' => [['rank' => 1, 'sku' => 'MATCH-1', 'product_id' => $product->id, 'image_id' => '1', 'score' => 0.91]],
+        ])]);
+        $this->post(route('products.search'), ['image' => UploadedFile::fake()->image('query.jpg')])
+            ->assertOk()->assertViewHas('results', fn ($rows) => $rows->isEmpty());
+    }
+
     public function test_malformed_json_response_shows_error_without_legacy_fallback(): void
     {
         Http::preventStrayRequests();

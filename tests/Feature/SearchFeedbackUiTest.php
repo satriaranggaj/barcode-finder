@@ -42,7 +42,7 @@ class SearchFeedbackUiTest extends TestCase
         $alt->photos()->create(['path' => 'products/alt.jpg', 'thumbnail_path' => 'thumbs/alt.jpg']);
         $this->fakeSearch([
             ['rank' => 1, 'sku' => 'TOP-1', 'image_id' => 'front', 'score' => 0.91],
-            ['rank' => 2, 'sku' => 'TOP-2', 'image_id' => 'front', 'score' => 0.42],
+            ['rank' => 2, 'sku' => 'TOP-2', 'image_id' => 'front', 'score' => 0.82],
         ]);
 
         return $this->actingAs($user)->post(route('products.search'), [

@@ -17,12 +17,13 @@ class ProductAttributesTest extends TestCase
     public function test_refresh_persists_parsed_rows_with_provenance(): void
     {
         $product = Product::create(['sku' => 'SKU-A', 'description' => 'Obeng Plus PH2 150MM hitam 2PCS']);
-        $this->assertSame(4, ProductAttributes::refreshFromDescription($product));
-        $rows = $product->attributes()->orderBy('key')->get();
-        $this->assertSame(['color', 'drive', 'measurement', 'quantity'], $rows->pluck('key')->all());
-        $this->assertSame(['HITAM', 'PH2', '150MM', '2PCS'], $rows->pluck('value')->all());
+        // Plus -> PHILLIPS plus specific PH2 code: 2 drive rows + measurement + color + quantity.
+        $this->assertSame(5, ProductAttributes::refreshFromDescription($product));
+        $rows = $product->attributes()->orderBy('key')->orderBy('value')->get();
+        $this->assertSame(['color', 'drive', 'drive', 'measurement', 'quantity'], $rows->pluck('key')->all());
+        $this->assertSame(['HITAM', 'PH2', 'PHILLIPS', '150MM', '2PCS'], $rows->pluck('value')->all());
         $this->assertTrue($rows->every(fn ($row) => $row->source === ProductAttribute::SOURCE_DESCRIPTION_PARSER));
-        $this->assertSame(['color', 'drive', 'measurement', 'quantity'], $rows->pluck('rule')->all());
+        $this->assertSame(['color', 'drive', 'drive', 'measurement', 'quantity'], $rows->pluck('rule')->all());
         $this->assertTrue($rows->every(fn ($row) => $row->confidence === null));
         // Raw description stays authoritative and untouched.
         $this->assertSame('Obeng Plus PH2 150MM hitam 2PCS', $product->fresh()->description);

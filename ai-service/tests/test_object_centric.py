@@ -11,7 +11,7 @@ from app.config import Settings
 from app.preprocessing.selection import BoundingBox
 from app.search.faiss_index import FaissIndexManager
 from app.search.ranking import fuse_ranks, model_score, weighted_score
-from app.search.service import RetrievalService, reference_has_object, is_object_box
+from app.search.service import RetrievalService, reference_has_object, is_object_box, proportion_compatibility
 import test_retrieval as fixtures
 MockEncoder = fixtures.MockEncoder
 
@@ -123,6 +123,68 @@ class ObjectCentricTests(unittest.TestCase):
             Settings(rank_bias=-1)
         with self.assertRaises(ValueError):
             Settings(rank_bias=float('nan'))
+
+    def test_tip_detail_weight_is_validated(self):
+        self.assertEqual(Settings(tip_detail_weight=0).tip_detail_weight, 0.0)
+        for bad in ({'tip_detail_weight': -0.1}, {'tip_detail_weight': 1.5}):
+            with self.assertRaises(ValueError):
+                Settings(**bad)
+
+    def test_proportion_weight_is_validated(self):
+        self.assertEqual(Settings(proportion_weight=0).proportion_weight, 0.0)
+        for bad in ({'proportion_weight': -0.1}, {'proportion_weight': 0.5}):
+            with self.assertRaises(ValueError):
+                Settings(**bad)
+
+    def test_proportion_compatibility_rules(self):
+        same = {'x': .3, 'y': .1, 'width': .3, 'height': .75}
+        self.assertAlmostEqual(proportion_compatibility(dict(same), dict(same)), 1.0)
+        # 4" vs 6" proportions differ measurably but stay plausible.
+        longer = {'x': .3, 'y': .05, 'width': .26, 'height': .9}
+        mid = proportion_compatibility(dict(same), dict(longer))
+        self.assertGreater(mid, 0.0)
+        self.assertLess(mid, 1.0)
+        # Square vs strip: near zero.
+        self.assertLess(proportion_compatibility(
+            {'x': 0, 'y': 0, 'width': .5, 'height': .5},
+            {'x': 0, 'y': 0, 'width': .1, 'height': .9}), 0.2)
+        # Full-image boxes and malformed crops never contribute.
+        self.assertIsNone(proportion_compatibility(
+            {'x': 0, 'y': 0, 'width': 1, 'height': 1}, dict(same)))
+        self.assertIsNone(proportion_compatibility(dict(same), None))
+        self.assertIsNone(proportion_compatibility(dict(same), {'x': 0}))
+        self.assertIsNone(proportion_compatibility(None, dict(same)))
+
+    def test_tip_detail_evidence_only_for_object_pairs(self):
+        settings = replace(self.settings, tip_detail_weight=.25)
+        service = RetrievalService(settings, self.encoders)
+        index = FaissIndexManager(self.root / 'tip.sqlite', service.signature)
+        try:
+            image, box = self.half_image(), BoundingBox(0, 0, .5, 1)
+            vectors, _ = service.embed(image, 'object', box)
+            self.assertIn('tip', vectors['siglip'])
+            self.assertIn('tip', vectors['dino'])
+            # Disabled by default: identical call without the weight emits nothing extra.
+            plain, _ = self.service.embed(image, 'object', box)
+            self.assertNotIn('tip', plain['siglip'])
+            self.assertNotIn('tip', plain['dino'])
+            # Full images carry no detail end, even with the weight on.
+            full, _ = service.embed(image, 'original')
+            self.assertNotIn('tip', full['siglip'])
+            index.add_product_embedding({'sku': '001', 'image_id': 'one',
+                'photo_hash': 'h-one', 'representation': 'object', 'selection_source': 'manual',
+                'extra': json.dumps({'crop': {'x': box.x, 'y': box.y, 'width': box.width, 'height': box.height},
+                                     'selection_source': 'manual'})}, vectors)
+            service.index = index
+            row = service.search(image, 5, None, 'object', box)['results'][0]
+            self.assertIsNotNone(row['tip_score'])
+            self.assertLessEqual(abs(row['tip_score']), 1.0)
+            # Full-image query against an object reference: global fallback, no tip.
+            fallback = service.search(image, 5, None, 'original')['results'][0]
+            self.assertIsNone(fallback['tip_score'])
+            self.assertIsNone(fallback['object_score'])
+        finally:
+            index.close()
 
 
 if __name__ == '__main__':

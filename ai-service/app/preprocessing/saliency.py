@@ -85,16 +85,17 @@ def centrality(box, width: int, height: int) -> float:
 def aspect_plausibility(box) -> float:
     """1.0 for a natural long/short ratio, decaying for strips and slivers.
 
-    The decay is deliberately gentle past the ideal: tall tools (screwdrivers,
-    poles) are legitimate products, so a ratio of ~5 still keeps partial
-    credit and only extreme slivers score near zero. Structural strip
+    The decay is deliberately gentle past the ideal: tall thin tools
+    (screwdrivers, poles, obeng plus/minus panjang/pendek) are legitimate
+    products, so a ratio of ~5 keeps half credit and ~9 still keeps ~0.3;
+    only extreme slivers (ratio > 15) score near zero. Structural strip
     rejection (full-width bands, contour gates) lives in the detectors.
     """
     _, _, bw, bh = box
     if bw <= 0 or bh <= 0:
         return 0.0
     ratio = max(bw, bh) / min(bw, bh)
-    return float(max(0.0, 1 - min(1.0, abs(np.log(ratio / IDEAL_ASPECT)) / 2)))
+    return float(max(0.0, 1 - min(1.0, abs(np.log(ratio / IDEAL_ASPECT)) / 2.8)))
 
 
 def box_quality(box, width: int, height: int, saliency: np.ndarray | None = None,

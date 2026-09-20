@@ -279,8 +279,20 @@ class ProductController extends Controller
                 $report = app(RetrievalClient::class)->search($request->file('image'), $crop, $allowFeedback, $fullImage, $selectionMode);
                 $feedbackToken = $allowFeedback
                     ? app(SearchEvidence::class)->stage($report, $request->user()->id, 'session-'.hash('sha256', $request->session()->getId()), $selectionMode) : null;
-                $products = Product::whereIn('sku', array_column($report['results'], 'sku'))->with('photos')->get()->keyBy('sku');
-                $results = collect($report['results'])->map(function ($row) use ($products) {
+                // Display hygiene (uncalibrated): hide sub-threshold rows so
+                // obvious junk never reaches staff. Unlike the frozen
+                // relevance policy (API-side gate with calibrated flags),
+                // this only affects rendering; staged evidence keeps the
+                // full AI view for audit, and predictedSku stays the AI's
+                // true top-1. Tune the value from eval trials, never by gut
+                // feel (see ai-service/policies/README.md).
+                $minSimilarity = (float) config('services.ai.search_min_similarity', 0.72);
+                $displayRows = array_values(array_filter(
+                    $report['results'],
+                    fn ($row) => is_numeric($row['score'] ?? null) && (float) $row['score'] >= $minSimilarity
+                ));
+                $products = Product::whereIn('sku', array_column($displayRows, 'sku'))->with('photos')->get()->keyBy('sku');
+                $results = collect($displayRows)->map(function ($row) use ($products) {
                     $product = $products->get($row['sku']);
                     if (! $product) {
                         return null;

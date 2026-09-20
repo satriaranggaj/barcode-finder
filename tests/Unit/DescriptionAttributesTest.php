@@ -23,12 +23,26 @@ class DescriptionAttributesTest extends TestCase
     public function test_screwdriver_variants_mirror_python_registry(): void
     {
         $plus = DescriptionAttributes::parse('Obeng Plus PH2 150MM gagang hitam 1pcs');
-        $this->assertSame(['PH2'], $this->values($plus, 'drive'));
+        $this->assertSame(['PH2', 'PHILLIPS'], $this->values($plus, 'drive'));
         $this->assertSame(['150MM'], $this->values($plus, 'measurement'));
         $flat = DescriptionAttributes::parse('Obeng Minus FLAT 6x150mm isi 2PCS');
-        $this->assertSame(['FLAT'], $this->values($flat, 'drive'));
+        $this->assertSame(['FLAT', 'FLAT'], $this->values($flat, 'drive'));
+        $this->assertSame(['6X150MM'], $this->values($flat, 'dimension'));
         $phillips = DescriptionAttributes::parse('PHILLIPS SCREWDRIVER PH1 100MM');
         $this->assertSame(['PH1', 'PHILLIPS'], $this->values($phillips, 'drive'));
+    }
+
+    public function test_obeng_synonyms_and_length_mirror_python(): void
+    {
+        $this->assertSame(['PHILLIPS'], $this->values(DescriptionAttributes::parse('Obeng Plus'), 'drive'));
+        $this->assertSame(['FLAT'], $this->values(DescriptionAttributes::parse('Obeng Minus'), 'drive'));
+        $this->assertSame(['PHILLIPS'], $this->values(DescriptionAttributes::parse('Obeng Kembang'), 'drive'));
+        $this->assertSame(['LONG'], $this->values(DescriptionAttributes::parse('Obeng Plus Panjang 150MM'), 'length'));
+        $this->assertSame(['SHORT'], $this->values(DescriptionAttributes::parse('Obeng Minus Pendek 100MM'), 'length'));
+        $this->assertSame(['6X150MM'], $this->values(DescriptionAttributes::parse('Obeng 6x150mm'), 'dimension'));
+        $this->assertSame(['6"'], $this->values(DescriptionAttributes::parse("COL.SCREWDRIVER 6'"), 'measurement'));
+        $this->assertContains('JC403-4', $this->values(DescriptionAttributes::parse('SCREWDRIVER JC403-4'), 'model'));
+        $this->assertContains('JC403-6', $this->values(DescriptionAttributes::parse('SCREWDRIVER JC403-6'), 'model'));
     }
 
     public function test_measurements_sizes_and_bare_numbers(): void

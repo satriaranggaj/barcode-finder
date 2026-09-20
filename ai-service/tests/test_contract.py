@@ -155,7 +155,7 @@ class SearchContractTests(unittest.TestCase):
         self.assertTrue(parsed.results)
         for row in parsed.results:
             for field in ('score', 'visual_score', 'object_score', 'global_score',
-                          'siglip_score', 'dino_score', 'local_score', 'text_score', 'ocr_score'):
+                          'siglip_score', 'dino_score', 'local_score', 'tip_score', 'text_score', 'ocr_score'):
                 value = getattr(row, field)
                 if value is not None:
                     self.assertLessEqual(value, 1.0, field)

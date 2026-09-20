@@ -19,7 +19,13 @@ logger = logging.getLogger(__name__)
 def create_app(settings: Settings | None = None, service: RetrievalService | None = None,
                legacy_encoder=None) -> FastAPI:
     settings = settings or Settings.from_env()
-    lock = Lock()
+    # Separate locks: heavy inference (/search, /embed) must never block the
+    # light interactive path (/select, /prepare). Previously one global lock
+    # returned 503 for auto-selection while a search was running, so the box
+    # appeared stuck right after upload. Light endpoints share one lock;
+    # heavy endpoints share another.
+    search_lock = Lock()
+    select_lock = Lock()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -107,7 +113,7 @@ def create_app(settings: Settings | None = None, service: RetrievalService | Non
                crop_x: float | None = Form(None), crop_y: float | None = Form(None),
                crop_width: float | None = Form(None), crop_height: float | None = Form(None),
                feedback_preview: bool = Form(False)):
-        if not lock.acquire(blocking=False):
+        if not search_lock.acquire(blocking=False):
             raise HTTPException(503, 'Inference busy; retry later', headers={'Retry-After': '2'})
         try:
             started = time.perf_counter()
@@ -116,7 +122,8 @@ def create_app(settings: Settings | None = None, service: RetrievalService | Non
             box = parse_selection((crop_x, crop_y, crop_width, crop_height), selection_mode)
             if selection_mode == 'full':
                 preprocessing_mode = 'original'
-            result = require_service().search(source, top_k, category, preprocessing_mode, box=box)
+            result = require_service().search(source, top_k, category, preprocessing_mode, box=box,
+                                              selection_mode=selection_mode)
             result.setdefault('stage_ms', {})['decode_ms'] = decode_ms
             result.setdefault('query', {})['selection_mode'] = selection_mode or ('manual' if box else 'auto')
             if feedback_preview:
@@ -132,24 +139,24 @@ def create_app(settings: Settings | None = None, service: RetrievalService | Non
         except RuntimeError as exc:
             raise HTTPException(503, str(exc)) from exc
         finally:
-            lock.release()
+            search_lock.release()
 
     @app.post('/select')
     def select(image: UploadFile = File(...)):
-        if not lock.acquire(blocking=False):
+        if not select_lock.acquire(blocking=False):
             raise HTTPException(503, 'Processing busy')
         try:
             # UI convenience: an editable center box beats an empty canvas,
             # while the search pipeline keeps its full-image fallback.
             return propose_for_ui(read_image(image), app.state.selection.selector)
         finally:
-            lock.release()
+            select_lock.release()
 
     @app.post('/prepare')
     def prepare(image: UploadFile = File(...), quality: int = Form(None, ge=75, le=95),
                 catalog_side: int = Form(None, ge=1200, le=1600), thumbnail_side: int = Form(None, ge=300, le=500),
                 catalog_quality: int = Form(None, ge=75, le=95), thumbnail_quality: int = Form(None, ge=75, le=95)):
-        if not lock.acquire(blocking=False):
+        if not select_lock.acquire(blocking=False):
             raise HTTPException(503, 'Processing busy')
         try:
             return prepare_upload(image.file.read(settings.max_bytes+1), settings.max_bytes,
@@ -163,7 +170,7 @@ def create_app(settings: Settings | None = None, service: RetrievalService | Non
             raise HTTPException(422, str(exc)) from exc
         finally:
             image.file.close()
-            lock.release()
+            select_lock.release()
 
     @app.post('/embed')
     def embed(image: UploadFile = File(...), representation: Literal['legacy', 'multi'] = Form('legacy'),
@@ -171,7 +178,7 @@ def create_app(settings: Settings | None = None, service: RetrievalService | Non
               selection_mode: Literal['auto', 'manual', 'full'] | None = Form(None),
               crop_x: float | None = Form(None), crop_y: float | None = Form(None),
               crop_width: float | None = Form(None), crop_height: float | None = Form(None)):
-        if not lock.acquire(blocking=False):
+        if not search_lock.acquire(blocking=False):
             raise HTTPException(503, 'Inference busy; retry later', headers={'Retry-After': '2'})
         try:
             source = read_image(image)
@@ -184,7 +191,10 @@ def create_app(settings: Settings | None = None, service: RetrievalService | Non
                 vector = app.state.legacy.encode_image(source)
                 return {'success': True, 'dimensions': len(vector), 'embedding': vector.tolist()}
             # A manual crop defines the region; never re-propose on the cropped image.
-            vectors, info = require_service().embed(source, 'original' if box is not None or selection_mode == 'full' else preprocessing_mode)
+            # Small auto boxes fall back to full inside embed(); manual boxes
+            # are honoured whatever their size.
+            vectors, info = require_service().embed(source, 'original' if box is not None or selection_mode == 'full' else preprocessing_mode,
+                                                    box=box, selection_mode=selection_mode)
             info['selection_mode'] = selection_mode or ('manual' if box else 'auto')
             return {'success': True, 'query': info,
                     'global': {name: crops['global'].tolist() for name, crops in vectors.items()},
@@ -195,7 +205,7 @@ def create_app(settings: Settings | None = None, service: RetrievalService | Non
         except RuntimeError as exc:
             raise HTTPException(503, str(exc)) from exc
         finally:
-            lock.release()
+            search_lock.release()
 
     return app
 

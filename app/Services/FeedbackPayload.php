@@ -26,7 +26,8 @@ final class FeedbackPayload
     /** Candidate scalar fields persisted as match evidence (scores, never vectors). */
     private const SCORE_KEYS = [
         'score', 'visual_score', 'siglip_score', 'dino_score', 'local_score',
-        'text_score', 'ocr_score', 'global_score', 'object_score', 'global_fallback_score',
+        'text_score', 'ocr_score', 'global_score', 'object_score', 'tip_score',
+        'proportion_score', 'global_fallback_score',
     ];
 
     /** Whitelisted FastAPI query info keys for the sanitized evidence snapshot. */

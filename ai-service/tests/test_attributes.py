@@ -14,13 +14,49 @@ def values(records, key):
 
 class ParserCoverageTests(unittest.TestCase):
     def test_screwdriver_plus_and_flat_variants(self):
+        # "Plus" is kept as generic PHILLIPS alongside the specific PH2 code
+        # so a query saying PLUS still overlaps a reference saying PHILLIPS.
         plus = parse_detailed('Obeng Plus PH2 150MM gagang hitam 1pcs')
-        self.assertEqual(values(plus, 'drive'), ['PH2'])
+        self.assertEqual(values(plus, 'drive'), ['PH2', 'PHILLIPS'])
         self.assertEqual(values(plus, 'measurement'), ['150MM'])
         flat = parse_detailed('Obeng Minus FLAT 6x150mm isi 2PCS')
-        self.assertEqual(values(flat, 'drive'), ['FLAT'])
+        # MINUS and FLAT both normalize to FLAT (two raw evidences, one value).
+        self.assertEqual(sorted(set(values(flat, 'drive'))), ['FLAT'])
+        self.assertEqual(values(flat, 'dimension'), ['6X150MM'])
         phillips = parse_detailed('PHILLIPS SCREWDRIVER PH1 100MM')
         self.assertEqual(values(phillips, 'drive'), ['PH1', 'PHILLIPS'])
+
+    def test_obeng_synonyms_normalize_to_canonical_drive(self):
+        self.assertEqual(values(parse_detailed('Obeng Plus'), 'drive'), ['PHILLIPS'])
+        self.assertEqual(values(parse_detailed('Obeng Minus'), 'drive'), ['FLAT'])
+        self.assertEqual(values(parse_detailed('Obeng Kembang'), 'drive'), ['PHILLIPS'])
+        self.assertEqual(values(parse_detailed('Screwdriver Cross 100MM'), 'drive'), ['PHILLIPS'])
+        self.assertEqual(values(parse_detailed('Obeng Flathead'), 'drive'), ['FLAT'])
+        self.assertEqual(values(parse_detailed('Obeng PH0 75MM'), 'drive'), ['PH0'])
+        # Family-aware compatibility: same tip family gets partial credit,
+        # opposite families stay zero.
+        self.assertEqual(compatibility({'drive': ['PH2']}, {'drive': ['PHILLIPS']}), 0.5)
+        self.assertEqual(compatibility({'drive': ['PHILLIPS']}, {'drive': ['FLAT']}), 0.0)
+        self.assertEqual(compatibility({'drive': ['PH1']}, {'drive': ['PH2']}), 0.5)
+        self.assertEqual(compatibility({'drive': ['PH2']}, {'drive': ['PH2']}), 1.0)
+
+    def test_panjang_pendek_and_dimensions(self):
+        long = parse_detailed('Obeng Plus Panjang 150MM')
+        self.assertEqual(values(long, 'length'), ['LONG'])
+        short = parse_detailed('Obeng Minus Pendek 100MM')
+        self.assertEqual(values(short, 'length'), ['SHORT'])
+        self.assertEqual(values(parse_detailed('Screwdriver Long 6"'), 'length'), ['LONG'])
+        dim = parse_detailed('Obeng 6x150mm')
+        self.assertEqual(values(dim, 'dimension'), ['6X150MM'])
+        box = parse_detailed('Lunch Box 19*11*6.5cm')
+        self.assertEqual(values(box, 'dimension'), ['19X11X6.5CM'])
+        inch = parse_detailed("COL.SCREWDRIVER 6'")
+        self.assertEqual(values(inch, 'measurement'), ['6"'])
+        variant = parse_detailed('SCREWDRIVER JC403-4')
+        self.assertIn('JC403-4', values(variant, 'model'))
+        variant6 = parse_detailed('SCREWDRIVER JC403-6')
+        self.assertIn('JC403-6', values(variant6, 'model'))
+        self.assertEqual(compatibility({'model': ['JC403-4']}, {'model': ['JC403-6']}), 0.0)
 
     def test_measurements_with_spaces_commas_and_inches(self):
         records = parse_detailed('Kunci pas 10MM, 12 MM, kabel 1,5M, pipa 2 INCH, kuas 1" dan 1.5"')
@@ -80,7 +116,9 @@ class LegacyStabilityTests(unittest.TestCase):
         for field in ('drive', 'measurement', 'size', 'color', 'quantity', 'model'):
             self.assertIn(field, attributes)
         self.assertIsNone(compatibility({}, attributes))
-        self.assertEqual(compatibility({'drive': ['PH1']}, {'drive': ['PH2']}), 0)
+        # Same tip family (PH1 vs PH2) is partial evidence, not zero.
+        self.assertEqual(compatibility({'drive': ['PH1']}, {'drive': ['PH2']}), 0.5)
+        self.assertEqual(compatibility({'drive': ['PH1']}, {'drive': ['FLAT']}), 0.0)
 
 
 class RegistryTests(unittest.TestCase):
@@ -108,7 +146,7 @@ class RegistryTests(unittest.TestCase):
             register_rule(AttributeRule('broken', 'broken', r'(unclosed'))
 
     def test_version_and_source_constants(self):
-        self.assertEqual(VERSION, 'description-attributes-v1')
+        self.assertEqual(VERSION, 'description-attributes-v2')
         self.assertEqual(SOURCE, 'description_parser')
 
 

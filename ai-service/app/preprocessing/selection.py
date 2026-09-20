@@ -142,12 +142,18 @@ class MultiSourceSelector:
     }
     # Independent corroboration: a box confirmed by other sources is far more
     # likely to be the product than a same-geometry box nobody else found.
+    # The corroborator must itself be a good box (geometry quality at least
+    # 3/4 of the candidate's): two mediocre boxes agreeing on one background
+    # region must never outrank a lone precise segmentation.
     CORROBORATION_IOU = .5
     CORROBORATION_BONUS = .15
     CORROBORATION_CAP = 2
+    CORROBORATION_QUALITY_RATIO = .75
     # Candidates covering this much of the frame (or more) isolate nothing;
     # the pipeline falls back to the full image instead of cropping noise.
-    MAX_COVERAGE = .75
+    # Kept well below the detector area window: a box over half the frame is
+    # never a useful object crop even when every detector agrees on it.
+    MAX_COVERAGE = .5
     def __init__(self, selectors=None, iou_threshold: float = .65, limit: int = 5):
         from .foreground import ContourProposals, ColorPopProposals, SaliencyProposals
         self.selectors = selectors if selectors is not None else [
@@ -214,13 +220,22 @@ class MultiSourceSelector:
             scored.append((quality, position, candidate))
         scored.sort(key=lambda row: (-row[0], row[1]))
         # Independent corroboration: boxes confirmed by other sources outrank
-        # same-geometry boxes nobody else found. Votes are counted before
-        # deduplication so the corroborating duplicates still count, then the
-        # dedup below keeps only the best box of each cluster.
+        # same-geometry boxes nobody else found — but only when the voter is
+        # itself a good box (see CORROBORATION_QUALITY_RATIO). Votes are
+        # counted before deduplication so the corroborating duplicates still
+        # count, then the dedup below keeps only the best box of each cluster.
+        unscaled = {}
+        for _quality, _position, candidate in scored:
+            box = candidate.box
+            pixel = (int(box.x * width), int(box.y * height),
+                     max(1, int(box.width * width)), max(1, int(box.height * height)))
+            unscaled[id(candidate)] = box_quality(pixel, width, height, None)
         for index, (_quality, _position, candidate) in enumerate(scored):
+            own = unscaled[id(candidate)]
             corroborators = {other.source for (_oquality, _oposition, other) in scored
                              if other is not candidate and other.source != candidate.source
-                             and _iou(candidate.box, other.box) >= self.CORROBORATION_IOU}
+                             and _iou(candidate.box, other.box) >= self.CORROBORATION_IOU
+                             and own > 0 and unscaled[id(other)] >= self.CORROBORATION_QUALITY_RATIO * own}
             bonus = 1 + self.CORROBORATION_BONUS * min(self.CORROBORATION_CAP, len(corroborators))
             scored[index] = (_quality * bonus, _position, candidate)
         scored.sort(key=lambda row: (-row[0], row[1]))
@@ -279,14 +294,17 @@ def _overlap_1d(a0, a1, b0, b1) -> float:
 def merge_attached_parts(candidates: list[Candidate]) -> list[Candidate]:
     """Merge thin protrusions into the body they attach to.
 
-    Tools segment by material: a yellow/black handle plus a silver shaft come
-    out as two boxes (GrabCut splits them, colour-pop keeps them apart), and
-    neither alone is the product. When a thin part sits flush against a wider
-    body, fully inside the body's span — shaft into handle, pole into product —
-    the union is the better object hypothesis. Strict on purpose: edges must
-    nearly touch without overlapping (crossing boxes are separate objects, not
-    parts), the part must sit inside the body span, and each box merges at
-    most once so unions can never snowball across the frame.
+    Tools segment by material: a yellow/black handle plus a silver shaft plus
+    a dark tip come out as two or three boxes (GrabCut splits them,
+    colour-pop keeps them apart), and no fragment alone is the product. When
+    a thin part sits flush against a wider body, fully inside the body's
+    span — shaft into handle, tip into shaft — the union is the better object
+    hypothesis. Single pass on purpose: each box merges at most once, because
+    chained unions demonstrably snowball background into the box (measured:
+    clutter top-1 IoU 0.65 collapses to 0.17 when unions keep absorbing).
+    Strict per pair: edges must nearly touch, spans must overlap, the union
+    stays below .6 of the frame and never widens past the body, so unions
+    can never snowball across the frame.
     """
     used = set()
     merged: list[Candidate] = []
@@ -319,24 +337,34 @@ def _try_attach(a: Candidate, b: Candidate) -> Candidate | None:
     area_ratio = min(aw * ah, bw * bh) / max(aw * ah, bw * bh)
     if area_ratio >= .5:
         return None
-    # Vertical stack: part flush above/below the body, inside its span.
+    # Vertical stack: part flush above/below the body, inside its span, and
+    # EXTENDING it — a fragment nested inside the body's span (fully covered
+    # background patch) is never a part, otherwise one nested box snowballs
+    # into swallowing precise boxes whole.
     if _flush(by, by + bh, ay, ay + ah) and \
             _overlap_1d(ax, ax + aw, bx, bx + bw) / min(aw, bw) >= .8 and \
-            min(aw, bw) / max(aw, bw) < .6:
+            min(aw, bw) / max(aw, bw) < .6 and \
+            union_h - ah > .005 and union_h - bh > .005 and \
+            union_w <= 1.1 * max(aw, bw):
         return _merged_candidate(a, b, union_x, union_y, union_w, union_h)
-    # Horizontal stack: mirror case.
-    if _flush(bx, bx + bw, ax, ax + aw) and \
-            _overlap_1d(ay, ay + ah, by, by + bh) / min(ah, bh) >= .8 and \
-            min(ah, bh) / max(ah, bh) < .6:
-        return _merged_candidate(a, b, union_x, union_y, union_w, union_h)
+    # No horizontal branch: side-by-side unions demonstrably combine product
+    # columns with adjacent background (measured: clutter top-1 IoU 0.65
+    # collapses to 0.17), while no measured case needs sideways merging.
+    # Re-add only with a real photo proving otherwise.
     return None
 
 
 def _flush(p0: float, p1: float, q0: float, q1: float) -> bool:
-    """True when interval ends nearly touch without real overlap."""
+    """True when interval ends nearly touch, allowing padded overlap.
+
+    Detectors pad boxes by ~8% so a shaft flush against a handle overlaps
+    by ~0.01..0.03 after padding; a strict <=0.01 overlap check would miss
+    the union (handle + shaft = whole obeng). Gaps up to 0.05 cover small
+    detection gaps without snowballing across the frame.
+    """
     gap = p0 - q1 if p0 >= q0 else q0 - p1
     overlap = min(p1, q1) - max(p0, q0)
-    return -0.01 <= gap <= 0.02 and overlap <= 0.01
+    return -0.03 <= gap <= 0.05 and overlap <= 0.03
 
 
 def _merged_candidate(a: Candidate, b: Candidate, x: float, y: float,

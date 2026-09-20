@@ -120,7 +120,22 @@ class GrabCutForeground:
         mask[-ring:, :] = cv2.GC_BGD
         mask[:, :ring] = cv2.GC_BGD
         mask[:, -ring:] = cv2.GC_BGD
-        cv2.ellipse(mask, (w // 2, h // 2), (max(4, int(w * .3)), max(4, int(h * .3))),
+        # Hands are the dominant contaminant in staff photos: skin bridges
+        # the product to the frame edge so GrabCut grows into fingers. Seed
+        # skin-toned pixels (classical YCbCr ellipse; OpenCV order is Y, Cr,
+        # Cb) as definite background BEFORE the central ellipse below, so the
+        # product seed still wins at the centre while hand regions cannot seed
+        # foreground. Catalog products here are tools/hardware, never
+        # skin-toned.
+        ycc = cv2.cvtColor(data, cv2.COLOR_RGB2YCrCb).astype(np.int16)
+        skin = (np.abs(ycc[:, :, 2] - 102) <= 25) & (np.abs(ycc[:, :, 1] - 153) <= 20)
+        mask[skin] = cv2.GC_BGD
+        # Taller seed (42% of half-height): long thin tools keep a foreground
+        # seed along the shaft; with a square seed only the bulky handle
+        # survives and the tip is cut off. Measured: full-tool top-1 on
+        # screwdriver photos, no loss on 5-scene bench (bands contained by
+        # the full-width rule below).
+        cv2.ellipse(mask, (w // 2, h // 2), (max(4, int(w * .3)), max(4, int(h * .42))),
                     0, 0, 360, cv2.GC_PR_FGD, -1)
         # Fixed RNG seed: the same staff photo must yield the same proposal on
         # every request, so the UI frame and search stay stable and comparable.
@@ -139,6 +154,12 @@ class GrabCutForeground:
                 continue
             # A component spanning the whole frame is not a usable crop.
             if bw * bh >= self.max_fraction * w * h:
+                continue
+            # A full-width band is shelf/floor geometry, not a product: the
+            # seed ring is definite background, so an edge-to-edge component
+            # is background leakage. Thin tools survive via padding and the
+            # attach-merge in selection.py, never via bands.
+            if x <= 2 and x + bw >= w - 2:
                 continue
             scored.append((_pad_box(x, y, bw, bh, w, h, self.padding), area))
         # Best-first by shared heuristic quality; every box stays user-editable.
@@ -197,7 +218,9 @@ class SaliencyProposals:
                 x, y, bw, bh, _size = map(int, component)
                 if not self.min_fraction <= bw * bh / (h * w) <= self.max_fraction:
                     continue
-                if min(bw, bh) < 10:
+                # Thin tool shafts (obeng silver on a light floor) are only a
+                # few px wide on the 384 thumbnail; 8 keeps them, noise below.
+                if min(bw, bh) < 8:
                     continue
                 # Bands spanning the full width are shelf/background geometry.
                 if x <= 1 and x + bw >= w - 1:
@@ -277,11 +300,14 @@ class ContourProposals:
     """Edge-contour boxes for compact products GrabCut deems too small.
 
     Blurred Canny edges closed morphologically, then external contours become
-    boxes. Accepts smaller areas (down to ~3%) and near-border objects that
+    boxes. Accepts small areas (down to ~1.5%) and near-border objects that
     GrabCut rejects, at the cost of occasional shelf fragments — acceptable
     because every proposal is user-editable and ranked after GrabCut.
+    The aspect gate is wide (long/short ratio ≤ 15) on purpose: long thin
+    tools such as obeng/screwdrivers (ratio 5..10) are legitimate products;
+    only extreme slivers are structural noise.
     """
-    def __init__(self, padding: float = .08, min_fraction: float = .02,
+    def __init__(self, padding: float = .08, min_fraction: float = .015,
                  max_fraction: float = .92):
         if not 0 <= padding <= .25:
             raise ValueError('Selection padding must be 0..0.25')
@@ -301,22 +327,47 @@ class ContourProposals:
         if min(h, w) < 32:
             return []
         blurred = cv2.GaussianBlur(data, (5, 5), 0)
-        edges = cv2.Canny(blurred, 50, 150)
+        # Low Canny floor (30): silver shafts on a light floor differ by only
+        # ~30 gray levels; the classic 50 floor renders them edgeless and the
+        # tip evidence is lost. Extra fragments are deduped and ranked, and
+        # every proposal stays user-editable.
+        edges = cv2.Canny(blurred, 30, 90)
         closed = cv2.dilate(edges, np.ones((7, 7), np.uint8), iterations=2)
+        # Vertical close: a shaft broken into short dashes by glare stays a
+        # set of sub-threshold fragments without bridging along its axis.
+        # A 3x21 close reconnects vertical dashes without fattening them, so
+        # the shaft becomes one long component the merge can attach.
+        closed = cv2.morphologyEx(closed, cv2.MORPH_CLOSE, np.ones((3, 21), np.uint8))
         contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         area = h * w
         scored = []
         for contour in contours:
             x, y, bw, bh = map(int, cv2.boundingRect(contour))
-            if not self.min_fraction <= bw * bh / area <= self.max_fraction:
+            short, long = min(bw, bh), max(bw, bh)
+            ratio = long / max(1, short)
+            # Long straight dashes (shaft candidates) may be thin in area;
+            # judge them by length instead of bulk. Ordinary fragments keep
+            # the 1.5% floor.
+            floor = 0.004 if ratio >= 4 else self.min_fraction
+            if not floor <= bw * bh / area <= self.max_fraction:
                 continue
-            if bw < 10 or bh < 10:
+            # Thin shafts survive at 8 px on the 384 thumbnail (see Saliency);
+            # a long straight shaft (ratio >= 4) is still accepted at 6 px so
+            # low-contrast silver on a bright floor is not dropped. Small
+            # square noise (both sides < 8, no length) stays rejected.
+            short, long = min(bw, bh), max(bw, bh)
+            if short < 6 or (short < 8 and long / max(1, short) < 4):
                 continue
             # Bands spanning the full width are shelf/background geometry.
             if x <= 2 and x + bw >= w - 2:
                 continue
-            aspect = bw / max(1, bh)
-            if not .12 <= aspect <= 8:
+            # Wide gate (long/short ≤ 40): a bare shaft contour is a far
+            # thinner sliver (ratio 20..35) than the merged tool (ratio 3..6).
+            # It only survives ranking when merge_attached_parts fuses it into
+            # a body; lone slivers score ~0 on aspect and stay buried, while
+            # dropping them here would amputate the tip before merging.
+            ratio = max(bw, bh) / max(1, min(bw, bh))
+            if ratio > 40:
                 continue
             # Shape quality (size plausibility, centrality, aspect) ranks boxes.
             box = _pad_box(x, y, bw, bh, w, h, self.padding)

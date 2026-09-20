@@ -95,10 +95,18 @@ class OcrCompatibilityTests(unittest.TestCase):
         self.assertEqual(result['query']['ocr_tokens'], ['PH2'])
 
     def test_conflicting_marking_scores_zero_but_keeps_candidate(self):
-        self.add('A', 'a', (1., 0.), 'Obeng PH1 100MM')
+        # Opposite families (plus vs minus) score zero but keep the candidate.
+        self.add('A', 'a', (1., 0.), 'Obeng Minus FLAT 100MM')
         result = self.search([word('PH2')])
         self.assertEqual(result['results'][0]['sku'], 'A')
         self.assertAlmostEqual(result['results'][0]['ocr_score'], 0.0)
+
+    def test_same_family_marking_scores_partial(self):
+        # PH2 query vs PH1 reference: same philips family, different code.
+        self.add('A', 'a', (1., 0.), 'Obeng PH1 100MM')
+        result = self.search([word('PH2')])
+        self.assertEqual(result['results'][0]['sku'], 'A')
+        self.assertAlmostEqual(result['results'][0]['ocr_score'], 0.5)
 
     def test_low_confidence_reading_contributes_little(self):
         self.add('A', 'a', (1., 0.), 'Obeng PH2 150MM')

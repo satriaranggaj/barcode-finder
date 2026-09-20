@@ -1,5 +1,6 @@
 """Shared orchestration for API, offline indexing and evaluation."""
 import logging
+import math
 import time
 import json
 import hashlib
@@ -36,6 +37,13 @@ def is_object_box(box: BoundingBox | None) -> bool:
             or box.width < 1 - TOLERANCE or box.height < 1 - TOLERANCE)
 
 
+# Auto boxes below this coverage are treated as fragments, not objects: a
+# handle-only crop (e.g. 0.29 x 0.47 = 0.136 on the screwdriver fixture)
+# amputates the tip/length evidence, while true whole-tool boxes measure
+# ~0.21 and up. Manual crops bypass this gate entirely.
+MIN_AUTO_COVERAGE = 0.15
+
+
 def clip_similarity(value: float) -> float:
     """Clamp a cosine-style similarity to [-1, 1].
 
@@ -43,6 +51,28 @@ def clip_similarity(value: float) -> float:
     near-identical images, which the API schema (and any consumer) rejects.
     """
     return max(-1.0, min(1.0, float(value)))
+
+
+def proportion_compatibility(query_box, reference_crop) -> float | None:
+    """Crop-proportion similarity in [0, 1] for size variants.
+
+    Compares long/short ratios (rotation-invariant), so a 4" query matches a
+    4" reference better than a 6" one even when handles are identical and
+    square padding erased the difference from the pixels. Only meaningful
+    when both sides carry true object boxes; anything else returns None and
+    the caller falls back to pure visual scores.
+    """
+    try:
+        qb = query_box if isinstance(query_box, BoundingBox) else BoundingBox(**query_box)
+        rc = reference_crop
+        rb = BoundingBox(**{key: rc[key] for key in ('x', 'y', 'width', 'height')})
+        if not is_object_box(qb) or not is_object_box(rb):
+            return None
+        query_ratio = max(qb.width, qb.height) / min(qb.width, qb.height)
+        reference_ratio = max(rb.width, rb.height) / min(rb.width, rb.height)
+        return max(0.0, 1.0 - abs(math.log(query_ratio / reference_ratio)) / math.log(4.0))
+    except (TypeError, ValueError, ZeroDivisionError, KeyError, AttributeError):
+        return None
 
 
 def reference_attributes(extra: dict) -> dict:
@@ -118,13 +148,23 @@ class RetrievalService:
                                   'decode_memory_mb': self.settings.processing_memory_mb,
                                   'description_text': self.settings.description_text_weight > 0,
                                   'patch_version': 'masked-square-v2',
-                                  'patches': self.settings.max_patches if self.settings.patch_weight > 0 else 0}}
+                                  'patches': self.settings.max_patches if self.settings.patch_weight > 0 else 0,
+                                  'tip_detail': self.settings.tip_detail_weight > 0}}
 
     def embed(self, image: Image.Image, mode: str, box: BoundingBox | None = None, description: str = '',
-                timings: dict | None = None) -> tuple[dict, dict]:
+                timings: dict | None = None, selection_mode: str | None = None) -> tuple[dict, dict]:
         clock = time.perf_counter
         mark = clock()
         reason = 'manual_selection' if box else 'original_requested'
+        if box is not None and selection_mode != 'manual' and box.width * box.height < MIN_AUTO_COVERAGE:
+            # A small auto box is more likely a fragment (handle without the
+            # shaft/tip) than a tight object crop; cropping to it amputates
+            # the distinguishing evidence (plus/minus tip, length), which can
+            # never be recovered downstream. Fall back to the full image whose
+            # local crops still see the tip. Explicit manual crops are always
+            # honoured whatever their size.
+            box = None
+            reason = 'small_proposal_fallback'
         if box is None and mode == 'object':
             # Pipeline guarantees a full-image fallback; a failed proposal never
             # runs a second detector with different padding.
@@ -132,6 +172,9 @@ class RetrievalService:
             reason = proposal['reason']
             if proposal['boxes']:
                 box = BoundingBox(**proposal['boxes'][0])
+                if box.width * box.height < MIN_AUTO_COVERAGE:
+                    box = None
+                    reason = 'small_proposal_fallback'
         if timings is not None:
             timings['selection_ms'] = timings.get('selection_ms', 0.0) + (clock() - mark) * 1000
             mark = clock()
@@ -172,6 +215,23 @@ class RetrievalService:
                 representations['dino']['patches'] = encoder.encode_patches(prepared.image, self.settings.max_patches)
             except Exception:
                 logger.exception('Patch extraction failed; dino global retained')
+        # Detail-end view for fine tips/markings: bottom 30% of a true object
+        # box, padded square like every other crop. Deliberately outside the
+        # per-encoder block (a tip failure must not discard globals), and only
+        # when the query/reference actually carries an object — never for
+        # full images, where the "detail end" would be floor or shelf.
+        if self.settings.tip_detail_weight > 0 and is_object_box(box):
+            detail = prepared.image.crop((0, int(prepared.image.height * .7),
+                                          prepared.image.width, prepared.image.height))
+            for name, encoder in self.encoders.items():
+                if name not in representations:
+                    continue
+                try:
+                    representations[name]['tip'] = normalize(
+                        encoder.encode_images([pad_square(detail)]))[0]
+                except Exception:
+                    representations[name].pop('tip', None)
+                    logger.exception('Tip detail extraction failed; %s global retained', name)
         if not representations:
             raise RuntimeError('No encoder available')
         if timings is not None:
@@ -182,7 +242,8 @@ class RetrievalService:
                                  'object_representation': is_object_box(box)}
 
     def search(self, image: Image.Image, top_k: int = 5, category: str | None = None,
-               mode: str = 'object', box: BoundingBox | None = None) -> dict:
+               mode: str = 'object', box: BoundingBox | None = None,
+               selection_mode: str | None = None) -> dict:
         if not 1 <= top_k <= 50:
             raise ValueError('top_k must be 1..50')
         if self.index is None:
@@ -194,7 +255,8 @@ class RetrievalService:
         stage_ms: dict[str, float] = {stage: 0.0 for stage in (
             'selection_ms', 'preprocess_ms', 'encode_ms', 'faiss_ms',
             'references_ms', 'ocr_ms', 'text_ms', 'rerank_ms')}
-        query, info = self.embed(image, mode, box, timings=stage_ms)
+        query, info = self.embed(image, mode, box, timings=stage_ms,
+                                   selection_mode=selection_mode)
         available = {name: crops for name, crops in query.items()
                      if name in self.index.signature['models'] and self.settings.weights[name] > 0}
         if not available:
@@ -290,6 +352,17 @@ class RetrievalService:
                                                self.settings.patch_trim)
                 scores['dino'] = clip_similarity(
                     (1-self.settings.patch_weight)*scores['dino'] + self.settings.patch_weight*patch_score)
+            tip_score = None
+            if self.settings.tip_detail_weight > 0 and query_has_object and ref_has_object:
+                tip_scores = {name: clip_similarity(crops['tip'] @ reference[name]['tip'])
+                              for name, crops in available.items()
+                              if 'tip' in crops and 'tip' in reference.get(name, {})}
+                if tip_scores:
+                    for name in tip_scores:
+                        scores[name] = clip_similarity(
+                            (1-self.settings.tip_detail_weight)*scores[name]
+                            + self.settings.tip_detail_weight*tip_scores[name])
+                    tip_score = weighted_score(tip_scores, {name: self.settings.weights[name] for name in tip_scores})
             ocr_score = compatibility(query_attributes, reference_attributes(extra))
             if ocr_score is not None and ocr_factor is not None:
                 ocr_score = ocr_score * ocr_factor
@@ -306,15 +379,23 @@ class RetrievalService:
             visual = weighted_score(scores, self.settings.weights)
             final = visual if secondary is None else clip_similarity(
                 (1-self.settings.secondary_weight)*visual + self.settings.secondary_weight*secondary)
+            proportion_score = None
+            if self.settings.proportion_weight > 0 and query_has_object and ref_has_object:
+                proportion_score = proportion_compatibility(info.get('selection_used'), extra.get('crop'))
+                if proportion_score is not None:
+                    final = clip_similarity(
+                        (1-self.settings.proportion_weight)*final
+                        + self.settings.proportion_weight*proportion_score)
             images.append({'sku': metadata['sku'], 'product_id': metadata['product_id'],
                            'image_id': metadata['image_id'], 'family': metadata.get('family'),
                            'sub_category': metadata.get('sub_category'),
                            'score': final, 'visual_score': visual,
                            'object_score': weighted_score(object_scores, self.settings.weights) if object_scores else None,
                            'global_score': weighted_score(context_scores, self.settings.weights),
-                           'ocr_score': ocr_score, 'text_score': text_score,
-                           'siglip_score': scores.get('siglip'), 'dino_score': scores.get('dino'),
-                           'local_score': patch_score})
+                            'ocr_score': ocr_score, 'text_score': text_score,
+                            'siglip_score': scores.get('siglip'), 'dino_score': scores.get('dino'),
+                            'local_score': patch_score, 'tip_score': tip_score,
+                            'proportion_score': proportion_score})
         stage_ms['rerank_ms'] = max(0., (clock() - mark) * 1000 - stage_ms['text_ms'])
         all_skus = aggregate_skus(images)
         level, gap = confidence(all_skus, self.settings.high_score, self.settings.high_gap, self.settings.medium_score)
@@ -344,6 +425,8 @@ class RetrievalService:
                 'ranking_code': RANKING_CODE,
                 'local_weight': self.settings.local_weight, 'global_weight': self.settings.global_weight,
                 'patch_weight': self.settings.patch_weight, 'secondary_weight': self.settings.secondary_weight,
+                'tip_detail_weight': self.settings.tip_detail_weight,
+                'proportion_weight': self.settings.proportion_weight,
                 'patch_aggregation': self.settings.patch_aggregation,
                 'patch_top_k': self.settings.patch_top_k, 'patch_trim': self.settings.patch_trim,
                 'description_text_weight': self.settings.description_text_weight,

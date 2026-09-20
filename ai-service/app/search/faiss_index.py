@@ -104,6 +104,8 @@ class FaissIndexManager:
                 required.add('description')
             if model == 'dino' and self.signature['preprocessing'].get('patches', 0):
                 required.add('patches')
+            if self.signature['preprocessing'].get('tip_detail'):
+                required.add('tip')
             if set(crops) != required:
                 raise ValueError('Incomplete crop representations')
             prepared[model] = {name: normalize(vector) for name, vector in crops.items()}
@@ -255,6 +257,7 @@ class FaissIndexManager:
             vector_count = manager.db.execute('SELECT count(*) FROM vectors').fetchone()[0]
             per_ref = len(manager.indexes) * 7 + int(bool(manager.signature['preprocessing'].get('patches', 0)))
             per_ref += int(bool(manager.signature['preprocessing'].get('description_text')))
+            per_ref += len(manager.indexes) * int(bool(manager.signature['preprocessing'].get('tip_detail')))
             if vector_count != manager.count * per_ref:
                 raise ValueError('Incomplete crop metadata')
             return manager
