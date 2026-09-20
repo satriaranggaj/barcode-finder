@@ -1,4 +1,5 @@
 import './object-selection';
+import { compressImages, isCompressible, savingText } from './image-compression';
 
 // One photo per request bounds POST size and PHP inference time for multi-upload.
 document.querySelectorAll('[data-upload-designs]').forEach(form => {
@@ -6,6 +7,10 @@ document.querySelectorAll('[data-upload-designs]').forEach(form => {
         event.preventDefault();
         if (form.dataset.uploading === 'true') return;
         const input = form.querySelector('input[name="images[]"]');
+        // Never submit a half-compressed state: wait for any in-flight
+        // client compression before reading input.files.
+        try { await (input?._lenskuCompress || Promise.resolve()); } catch { /* fallback file already set */ }
+        if (input?.dataset?.compressing === 'true') return;
         const files = [...(input?.files || [])];
         if (!files.length || files.length > 10) { alert('Pilih 1 sampai 10 foto.'); return; }
         const snapshot = new FormData(form);
@@ -55,7 +60,7 @@ document.querySelectorAll('[data-photo-picker]').forEach((button) => {
 
 // Ambil file dari Kamera / Galeri
 document.querySelectorAll('[data-photo-source]').forEach((source) => {
-	source.addEventListener('change', () => {
+	source.addEventListener('change', async () => {
 		if (!source.files?.length) return;
 
 		const target = document.getElementById(source.dataset.photoTarget);
@@ -63,23 +68,21 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 
 		if (!target) return;
 
-		const dataTransfer = new DataTransfer();
+		const incoming = Array.from(source.files);
+		// Reset segera agar pemilih yang sama bisa dipakai lagi walau
+		// kompresi masih berjalan.
+		source.value = '';
 
 		/*
 		 * Untuk admin:
 		 * pertahankan foto yang sebelumnya sudah dipilih.
 		 */
-		if (mode === 'append') {
-			Array.from(target.files ?? []).forEach((file) => {
-				dataTransfer.items.add(file);
-			});
-		}
+		const kept = mode === 'append' ? Array.from(target.files ?? []) : [];
 
-		/*
-		 * Tambahkan foto dari kamera / galeri.
-		 */
-		Array.from(source.files).forEach((file) => {
-			const duplicate = Array.from(dataTransfer.files).some(
+		// Dedup mentah sebelum kompresi (nama/ukuran masih original).
+		const merged = [...kept];
+		incoming.forEach((file) => {
+			const duplicate = merged.some(
 				(existing) =>
 					existing.name === file.name &&
 					existing.size === file.size &&
@@ -87,19 +90,47 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 			);
 
 			if (!duplicate) {
-				dataTransfer.items.add(file);
+				merged.push(file);
 			}
 		});
 
-		/*
-		 * Masukkan semua file ke input asli yang
-		 * nantinya dikirim ke Laravel.
-		 */
-		target.files = dataTransfer.files;
+		// Kompresi otomatis: resolusi dipertahankan, hanya file size
+		// yang dikurangi. File yang sudah dioptimalkan dilewati lewat
+		// marker internal sehingga tidak terjadi double lossy.
+		const task = (async () => {
+			setCompressing(target, true, 'Mengoptimalkan foto…');
+			try {
+				const originalBytes = merged.reduce((sum, file) => sum + (file.size || 0), 0);
+				const optimized = await compressImages(merged);
+				// Dedup pasca-kompresi: memilih foto galeri yang sama dua
+				// kali menghasilkan nama+ukuran output yang identik.
+				const unique = [];
+				optimized.forEach((file) => {
+					if (!unique.some((existing) => existing.name === file.name && existing.size === file.size)) {
+						unique.push(file);
+					}
+				});
+				const dataTransfer = new DataTransfer();
+				unique.forEach((file) => dataTransfer.items.add(file));
+				target.files = dataTransfer.files;
+				const saving = savingText(originalBytes, unique.reduce((sum, file) => sum + (file.size || 0), 0));
+				setCompressing(target, false, saving ? `Foto siap diunggah · ${saving}` : 'Foto siap diunggah');
+			} catch {
+				// Fallback: pakai file original agar upload tidak gagal.
+				const dataTransfer = new DataTransfer();
+				merged.forEach((file) => dataTransfer.items.add(file));
+				target.files = dataTransfer.files;
+				setCompressing(target, false, '');
+			}
+			return [...(target.files || [])];
+		})();
+		target._lenskuCompress = task;
+		await task;
 
 		/*
 		 * Trigger "change" agar kode preview
-		 * di bawah ikut berjalan.
+		 * di bawah ikut berjalan (selalu SETELAH kompresi selesai,
+		 * sehingga preview + object selection memakai file final).
 		 */
 		target.dispatchEvent(
 			new Event('change', {
@@ -108,18 +139,110 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 		);
 
 		/*
-		 * Reset input kamera/galeri agar bisa
-		 * digunakan lagi.
-		 */
-		source.value = '';
-
-		/*
 		 * Tutup menu Kamera / Galeri.
 		 */
 		document.querySelectorAll('[data-photo-menu]').forEach((button) => {
 			const menu = document.getElementById(button.dataset.photoMenu);
 			if (menu) menu.hidden = true;
 		});
+	});
+});
+
+/*
+ |--------------------------------------------------------------------------
+ | COMPRESSION STATUS + SUBMIT GATING
+ |--------------------------------------------------------------------------
+ |
+ | Selama kompresi berjalan: tampilkan status ringan dan kunci tombol
+ | submit agar tidak ada file setengah diproses yang terkirim.
+ | Search form (submit native) menunggu promise kompresi sebelum submit.
+ */
+
+function compressStatusElement(input) {
+	const preview = input.dataset.previewTarget ? document.getElementById(input.dataset.previewTarget) : null;
+	const host = preview || input.form || input.parentElement;
+	if (!host) return null;
+	let status = host.querySelector?.('[data-compress-status]');
+	if (!status) {
+		status = document.createElement('p');
+		status.setAttribute('data-compress-status', '');
+		status.setAttribute('role', 'status');
+		status.className = 'mt-2 text-xs font-semibold text-[#8b5e00]';
+		(preview || host).prepend(status);
+	}
+	return status;
+}
+
+function setCompressing(input, active, text) {
+	if (!input) return;
+	if (active) input.dataset.compressing = 'true';
+	else delete input.dataset.compressing;
+	const form = input.form;
+	form?.querySelectorAll?.('[data-preview-submit], button[type="submit"]').forEach((button) => {
+		if (active) {
+			if (button.dataset.lenskuDisabled !== 'true') {
+				button.dataset.lenskuDisabled = 'true';
+				button.setAttribute('aria-disabled', 'true');
+				button.classList.add('opacity-50', 'pointer-events-none');
+			}
+		} else if (button.dataset.lenskuDisabled === 'true') {
+			delete button.dataset.lenskuDisabled;
+			button.removeAttribute('aria-disabled');
+			button.classList.remove('opacity-50', 'pointer-events-none');
+		}
+	});
+	const status = compressStatusElement(input);
+	if (status) {
+		status.textContent = text || '';
+		status.hidden = !text;
+	}
+}
+
+// Pengaman untuk input yang diisi langsung tanpa lewat picker
+// (programmatic/set via devtools): kompres sebelum preview/selection.
+document.addEventListener('change', async (event) => {
+	const input = event.target?.matches?.('input[data-image-preview]') ? event.target : null;
+	if (!input || input._lenskuApplying || input.dataset.compressing === 'true') return;
+	const files = [...(input.files || [])];
+	if (!files.length) return;
+	if (!files.some((file) => isCompressible(file))) return;
+	event.stopImmediatePropagation();
+	input._lenskuApplying = true;
+	setCompressing(input, true, 'Mengoptimalkan foto…');
+	try {
+		const originalBytes = files.reduce((sum, file) => sum + (file.size || 0), 0);
+		const optimized = await compressImages(files);
+		const dataTransfer = new DataTransfer();
+		optimized.forEach((file) => dataTransfer.items.add(file));
+		input.files = dataTransfer.files;
+		input._lenskuCompress = Promise.resolve([...input.files]);
+		const saving = savingText(originalBytes, optimized.reduce((sum, file) => sum + (file.size || 0), 0));
+		setCompressing(input, false, saving ? `Foto siap diunggah · ${saving}` : 'Foto siap diunggah');
+	} catch {
+		setCompressing(input, false, '');
+	} finally {
+		input._lenskuApplying = false;
+	}
+	input.dispatchEvent(new Event('change', { bubbles: true }));
+}, true);
+
+// Search form memakai submit native: tahan submit sampai kompresi selesai.
+document.querySelectorAll('form').forEach((form) => {
+	if (form.hasAttribute('data-upload-designs')) return;
+	const imageInput = form.querySelector('input[data-image-preview][name="image"]');
+	if (!imageInput) return;
+	form.addEventListener('submit', async (event) => {
+		if (form.dataset.lenskuResubmit === 'true') {
+			delete form.dataset.lenskuResubmit;
+			return;
+		}
+		try { await (imageInput._lenskuCompress || Promise.resolve()); } catch { /* fallback file sudah terpasang */ }
+		if (imageInput.dataset.compressing === 'true') {
+			event.preventDefault();
+			try { await (imageInput._lenskuCompress || Promise.resolve()); } catch { /* noop */ }
+			form.dataset.lenskuResubmit = 'true';
+			form.requestSubmit();
+		}
 	});
 });
 
