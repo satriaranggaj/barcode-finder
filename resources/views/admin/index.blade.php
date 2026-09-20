@@ -5,8 +5,12 @@
     <div><p class="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-[#8b7355]">Admin workspace</p><h1 class="font-display text-4xl font-bold leading-[0.95] tracking-[-0.04em] sm:text-6xl">Rawat katalog<br><span class="text-[#543019]">tetap hidup.</span></h1><p class="mt-5 max-w-xl text-sm leading-6 text-[#765c47]">Import data terbaru, lengkapi foto SKU, dan cari produk dengan gambar dari satu tempat.</p></div>
     <div class="rounded-2xl bg-[#543019] p-5 text-white md:w-64"><p class="text-xs font-bold uppercase tracking-[0.16em] text-[#fff200]">Kelengkapan foto</p><p class="mt-2 font-display text-4xl font-bold">{{ $totalProducts ? number_format(($productsWithPhotos / $totalProducts) * 100, 0) : 0 }}%</p><p class="mt-1 text-xs text-[#f8e9c2]">{{ $productsWithPhotos }} dari {{ $totalProducts }} produk</p></div>
 </div>
-@if (($pendingReferences ?? 0) > 0)
-    <div class="mb-6 rounded-xl border border-[#ffc20e] bg-[#fff8d6] px-4 py-3 text-sm font-semibold text-[#543019]">{{ $pendingReferences }} konfirmasi terverifikasi menunggu masuk index — jalankan <span class="font-mono">search:build-index --include-verified</span> lalu restart AI worker agar AI semakin hafal barang.</div>
+@if (! empty($indexRebuildRequired))
+    <div class="mb-6 rounded-xl border border-[#ed1c24] bg-[#fff0eb] px-4 py-3 text-sm font-semibold text-[#8d1f24]">Perubahan referensi memerlukan full rebuild: jalankan <span class="font-mono">search:build-index</span>. ({{ $indexRebuildRequired }})</div>
+@elseif (! empty($indexBuilding))
+    <div class="mb-6 rounded-xl border border-[#ffc20e] bg-[#fff8d6] px-4 py-3 text-sm font-semibold text-[#543019]">AI sedang memperbarui index...</div>
+@elseif (($pendingReferences ?? 0) > 0)
+    <div class="mb-6 rounded-xl border border-[#ffc20e] bg-[#fff8d6] px-4 py-3 text-sm font-semibold text-[#543019]">{{ $pendingReferences }} reference menunggu dipelajari AI.</div>
 @endif
 
 <div class="mb-8 flex flex-wrap gap-2 border-b border-[#eadfca] pb-3">

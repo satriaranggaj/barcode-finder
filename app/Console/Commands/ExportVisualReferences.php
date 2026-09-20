@@ -90,6 +90,7 @@ class ExportVisualReferences extends Command
                 }
                 $this->writeFile($base.'.json', json_encode([
                     'product_id' => $row->confirmed_product_id, 'crop' => $row->crop,
+                    'selection_source' => $row->selection_source,
                     'source' => 'confirmed_search', 'capture_group' => $row->evidence['capture_group'] ?? 'unknown-session',
                     'selection_verified' => true, 'description' => $row->confirmedProduct->description,
                     'trusted_attributes' => ProductAttributes::trustedForExport($row->confirmedProduct),

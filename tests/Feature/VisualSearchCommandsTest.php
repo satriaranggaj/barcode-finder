@@ -59,23 +59,28 @@ class VisualSearchCommandsTest extends TestCase
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $product = Product::create(['sku' => 'SKU123']);
+        $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'pending']);
         SearchFeedback::create([
             'user_id' => $admin->id, 'confirmed_product_id' => $product->id,
             'predicted_sku' => 'SKU123', 'confirmed_sku' => 'SKU123',
             'disk' => 'local', 'query_image_path' => 'verified-search/q.webp',
             'photo_hash' => str_repeat('a', 64), 'dhash' => str_repeat('0', 16),
             'training_status' => 'verified', 'reference_eligible' => true,
-            'created_at' => now()->subHour(),
         ]);
 
-        Cache::forever('visual-index-built-at', now()->subDay()->toIso8601String());
         $this->actingAs($admin)->get(route('admin.index'))
             ->assertOk()
-            ->assertSee('1 konfirmasi terverifikasi menunggu masuk index');
+            ->assertSee('2 reference menunggu dipelajari AI.');
 
-        Cache::forever('visual-index-built-at', now()->toIso8601String());
+        Cache::put('visual-index-building', true, 60);
         $this->actingAs($admin)->get(route('admin.index'))
             ->assertOk()
-            ->assertDontSee('menunggu masuk index');
+            ->assertSee('AI sedang memperbarui index...');
+
+        Cache::forget('visual-index-building');
+        Cache::forever('visual-index-rebuild-required', 'photo 1 deleted');
+        $this->actingAs($admin)->get(route('admin.index'))
+            ->assertOk()
+            ->assertSee('memerlukan full rebuild');
     }
 }

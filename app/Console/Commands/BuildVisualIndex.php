@@ -35,11 +35,17 @@ class BuildVisualIndex extends Command
 
                 return self::FAILURE;
             }
-            $this->info('Generation published. Restart the AI worker to load it; previous workers keep their snapshot.');
+            $this->info('Generation published. AI worker hot-reloads it automatically; no restart needed.');
             $this->line('Private export: '.$dataset);
             // Timestamp for the admin "awaiting index" nudge; failures above
             // return before this line, so it only marks successful builds.
             Cache::forever('visual-index-built-at', now()->toIso8601String());
+            // A full rebuild heals every status: appended, failed and
+            // rebuild-required rows are all current again afterwards.
+            // Feedback is healed only when this rebuild actually included
+            // verified references; otherwise pending confirmations stay
+            // pending for the next auto-index run.
+            app(\App\Services\VisualIndexBuilder::class)->markAllIndexed((bool) $this->option('include-verified'));
 
             return self::SUCCESS;
         } finally {

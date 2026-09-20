@@ -114,6 +114,7 @@ class ReferenceSelectionTest extends TestCase
 
     public function test_reset_to_auto_via_update_endpoint(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
         config(['retrieval.driver' => 'faiss']);
         $product = Product::create(['sku' => 'REF-RESET']);
         $photo = $product->photos()->create([
@@ -137,6 +138,7 @@ class ReferenceSelectionTest extends TestCase
 
     public function test_manual_override_replaces_auto_crop_via_update_endpoint(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
         config(['retrieval.driver' => 'faiss']);
         $product = Product::create(['sku' => 'REF-OVERRIDE']);
         $photo = $product->photos()->create([
@@ -159,6 +161,7 @@ class ReferenceSelectionTest extends TestCase
 
     public function test_full_image_via_update_endpoint_clears_crop(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
         config(['retrieval.driver' => 'faiss']);
         $product = Product::create(['sku' => 'REF-CLEAR']);
         $photo = $product->photos()->create([

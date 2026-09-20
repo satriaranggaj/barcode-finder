@@ -124,6 +124,9 @@ class ExportVisualReferencesTest extends TestCase
         $this->assertSame('query-a', file_get_contents("{$dir}/SKU123/verified-{$good->id}.webp"));
         $sidecar = json_decode(file_get_contents("{$dir}/SKU123/verified-{$good->id}.json"), true);
         $this->assertSame('confirmed_search', $sidecar['source']);
+        // Parity with incremental builder: selection_source must round-trip
+        // (null for legacy rows) or appends see phantom metadata drift.
+        $this->assertArrayHasKey('selection_source', $sidecar);
         $this->assertTrue($sidecar['selection_verified']);
         $this->assertSame('Kuas 2 inch', $sidecar['description']);
         $this->assertSame('session-test', $sidecar['capture_group']);

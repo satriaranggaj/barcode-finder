@@ -70,8 +70,9 @@ class ObjectSelectionController extends Controller
         $crop = CropCoordinates::fromJson($request->input('crop_json'));
         $photo->update(['crop' => $crop,
             'selection_source' => $crop ? $request->input('selection_source') : 'full', 'selection_verified' => true, 'index_status' => 'pending']);
+        \App\Jobs\IndexVisualReference::dispatch('photo', $photo->id)->afterCommit();
 
-        return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. Rebuild indeks untuk menerapkan perubahan reference.');
+        return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. AI sedang mempelajari reference yang diperbarui.');
     }
 
     public function image(ProductPhoto $photo)

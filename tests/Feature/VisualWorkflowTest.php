@@ -72,6 +72,7 @@ class VisualWorkflowTest extends TestCase
 
     public function test_existing_crop_can_be_edited_and_cleared_without_changing_catalog(): void
     {
+        \Illuminate\Support\Facades\Queue::fake();
         $product = Product::create(['sku' => 'EDIT-CROP']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg']);
         $this->actingAs(User::factory()->create(['role' => 'admin']))->get(route('admin.photos.selection.edit', $photo))->assertOk();

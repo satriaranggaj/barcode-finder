@@ -72,27 +72,23 @@ class ProductController extends Controller
             'search' => $search,
             'tab' => $tab,
             'pendingReferences' => $this->pendingReferenceCount(),
+            'indexBuilding' => (bool) Cache::get('visual-index-building'),
+            'indexRebuildRequired' => Cache::get('visual-index-rebuild-required'),
         ]);
     }
 
     /**
-     * Verified eligible confirmations newer than the last successful index
-     * build (all of them when never built). Approximation by design: it
-     * nudges a rebuild, never gates search.
+     * References not yet in any published generation: catalog photos awaiting
+     * (pending/indexing/failed/rebuild-required) plus eligible confirmations
+     * never indexed. Informational only; it nudges, never gates search.
      */
     private function pendingReferenceCount(): int
     {
-        $query = SearchFeedback::where('training_status', 'verified')->where('reference_eligible', true);
-        $builtAt = Cache::get('visual-index-built-at');
-        if (is_string($builtAt) && $builtAt !== '') {
-            try {
-                $query->where('created_at', '>', \Carbon\Carbon::parse($builtAt));
-            } catch (\Throwable) {
-                // Corrupt marker: fall through to counting everything.
-            }
-        }
+        $photos = ProductPhoto::whereIn('index_status', ['pending', 'indexing', 'failed', 'rebuild-required'])->count();
+        $feedback = SearchFeedback::where('training_status', 'verified')
+            ->where('reference_eligible', true)->whereNull('indexed_at')->count();
 
-        return $query->count();
+        return $photos + $feedback;
     }
 
     public function importExcel(Request $request): RedirectResponse
@@ -143,11 +139,24 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
         ]);
 
-        $product->update([
-            'sku' => trim($validated['sku']),
-            'description' => trim((string) ($validated['description'] ?? '')) ?: null,
-        ]);
+        $oldSku = $product->sku;
+        $oldDescription = $product->description;
+        $newSku = trim($validated['sku']);
+        $newDescription = trim((string) ($validated['description'] ?? '')) ?: null;
+        $product->update(['sku' => $newSku, 'description' => $newDescription]);
         ProductAttributes::refreshFromDescription($product->fresh());
+
+        // FAISS HNSW vectors are immutable: indexed references whose SKU or
+        // description changed can only be replaced by a full rebuild.
+        // Pending photos stay pending (fresh append, no rebuild needed).
+        if ($oldSku !== $newSku || $oldDescription !== $newDescription) {
+            $indexed = $product->photos()->where('index_status', 'indexed')->pluck('id');
+            if ($indexed->isNotEmpty()) {
+                ProductPhoto::whereKey($indexed)->update(['index_status' => 'rebuild-required']);
+                Cache::forever('visual-index-rebuild-required',
+                    "product {$product->id} metadata changed; full rebuild required");
+            }
+        }
 
         return to_route('admin.products.show', $product)->with('success', 'Data item berhasil diperbarui.');
     }
@@ -212,7 +221,7 @@ class ProductController extends Controller
                 $embedding = config('retrieval.driver') === 'faiss' ? null : $this->createEmbedding($image, $crop);
                 $stored = app(ProductImages::class)->store($image);
                 try {
-                    ProductPhoto::create([
+                    $photo = ProductPhoto::create([
                         ...$stored,
                         'product_id' => $product->id,
                         'embedding' => $embedding === null ? null : '['.implode(',', $embedding).']',
@@ -220,6 +229,10 @@ class ProductController extends Controller
                         'selection_source' => $crop ? $source : 'full',
                         'selection_verified' => $crop !== null,
                     ]);
+                    // Indexing runs in the background: the upload responds
+                    // immediately while the reference joins the next index
+                    // generation on its own (hot-reloaded, no restart).
+                    \App\Jobs\IndexVisualReference::dispatch('photo', $photo->id)->afterCommit();
                 } catch (\Throwable $error) {
                     app(ProductImages::class)->discard($stored);
                     throw $error;
@@ -239,14 +252,21 @@ class ProductController extends Controller
             return response()->json(['success' => true, 'redirect' => route('admin.products.show', $product)]);
         }
 
-        return to_route('admin.products.show', $product)->with('success', count($validated['images']).' design foto SKU berhasil ditambahkan.');
+        return to_route('admin.products.show', $product)->with('success', count($validated['images']).' design foto SKU berhasil ditambahkan. AI sedang mempelajari reference.');
     }
 
     public function deletePhoto(ProductPhoto $photo): RedirectResponse
     {
         $product = $photo->product;
+        $wasIndexed = in_array($photo->index_status, ['indexed', 'indexing', 'rebuild-required'], true);
         app(ProductImages::class)->discardPhoto($photo);
         $photo->delete();
+        // HNSW vectors cannot be removed safely: a full rebuild regenerates
+        // the generation without this reference. Pending photos never
+        // reached the index, so they need no rebuild.
+        if ($wasIndexed) {
+            Cache::forever('visual-index-rebuild-required', "photo {$photo->id} deleted; full rebuild required");
+        }
 
         return to_route('admin.products.show', $product)->with('success', 'Foto design berhasil dihapus.');
     }

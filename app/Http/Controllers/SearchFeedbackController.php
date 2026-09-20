@@ -54,7 +54,7 @@ class SearchFeedbackController extends Controller
                 if ($nearDuplicate) {
                     $reasons[] = 'near_duplicate';
                 }
-                SearchFeedback::create([
+                $feedback = SearchFeedback::create([
                     'user_id' => $request->user()->id, 'confirmed_product_id' => $product->id,
                     'predicted_sku' => $payload['candidates'][0]['sku'] ?? null, 'confirmed_sku' => $product->sku,
                     'candidates' => $payload['candidates'], 'confidence' => $payload['confidence'],
@@ -85,6 +85,13 @@ class SearchFeedbackController extends Controller
                 report($error);
             }
             Cache::forget('search-evidence:'.$token);
+
+            // Eligible confirmations join retrieval memory on their own via
+            // the queue (hot-reloaded, no restart). Ineligible rows stay out
+            // by construction — the job re-checks before indexing.
+            if ($feedback->reference_eligible) {
+                \App\Jobs\IndexVisualReference::dispatch('feedback', $feedback->id)->afterCommit();
+            }
 
             return to_route('products.show', $product)->with('success', 'Konfirmasi disimpan sebagai data terverifikasi.');
         });

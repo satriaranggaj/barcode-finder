@@ -20,6 +20,6 @@ class SearchFeedback extends Model
     {
         return ['crop' => 'array', 'evidence' => 'array', 'candidates' => 'array',
             'score_gap' => 'float', 'reference_eligible' => 'boolean',
-            'training_exported_at' => 'datetime'];
+            'training_exported_at' => 'datetime', 'indexed_at' => 'datetime'];
     }
 }
