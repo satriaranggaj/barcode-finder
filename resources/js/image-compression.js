@@ -17,6 +17,10 @@ export const IMAGE_COMPRESSION_QUALITY = 0.88;
 
 export const MAX_CONCURRENT_COMPRESSIONS = 2;
 
+// File di bawah ambang ini dikirim apa adanya tanpa decode/encode:
+// biaya decode+encode full-res tidak sebanding dengan penghematannya.
+export const COMPRESSION_MIN_BYTES = 1024 * 1024;
+
 const OUTPUT_TYPE = 'image/webp';
 const OUTPUT_EXTENSION = 'webp';
 
@@ -69,7 +73,9 @@ function toBlob(canvas, type, quality) {
  */
 export async function compressImage(file, options = {}) {
     const quality = options.quality ?? IMAGE_COMPRESSION_QUALITY;
+    const minBytes = options.minBytes ?? COMPRESSION_MIN_BYTES;
     if (!isCompressible(file)) return file;
+    if ((file.size ?? 0) < minBytes) return file;
     try {
         if (typeof createImageBitmap !== 'function') return file;
         if (typeof document === 'undefined' || typeof document.createElement !== 'function') return file;

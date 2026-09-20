@@ -235,7 +235,10 @@ class VisualIndexBuilder
                 if ($writtenPhotos !== []) {
                     ProductPhoto::whereKey($writtenPhotos)->update(['index_status' => 'rebuild-required']);
                 }
-                Cache::forever('visual-index-rebuild-required', substr($error->getMessage(), 0, 500));
+                // Store the TAIL: the actual ValueError sits at the end of
+                // the message (head is only INFO preamble from model load).
+                $tail = substr($error->getMessage(), -500);
+                Cache::forever('visual-index-rebuild-required', $tail !== '' ? $tail : $error->getMessage());
             } else {
                 if ($writtenPhotos !== []) {
                     ProductPhoto::whereKey($writtenPhotos)

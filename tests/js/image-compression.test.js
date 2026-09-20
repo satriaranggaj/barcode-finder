@@ -9,7 +9,7 @@ import {
     savingText,
 } from '../../resources/js/image-compression.js';
 
-function jpegFile(name = 'photo.jpg', size = 1200) {
+function jpegFile(name = 'photo.jpg', size = 2 * 1024 * 1024) {
     const bytes = new Uint8Array(size);
     return new File([bytes], name, { type: 'image/jpeg' });
 }
@@ -70,10 +70,25 @@ describe('image-compression (no resolution loss)', () => {
     });
 
     it('output lebih besar → original digunakan', async () => {
-        blobSize = 5000; // encode baru lebih boros
-        const original = jpegFile('photo.jpg', 1200);
+        blobSize = 3 * 1024 * 1024; // encode baru lebih boros dari file 2MB
+        const original = jpegFile('photo.jpg');
         const out = await compressImage(original);
         expect(out).toBe(original);
+    });
+
+    it('file kecil di bawah ambang dilewati tanpa decode', async () => {
+        const tiny = jpegFile('kecil.jpg', 1200);
+        const out = await compressImage(tiny);
+        expect(out).toBe(tiny);
+        expect(bitmapCalls).toHaveLength(0);
+        expect(canvases).toHaveLength(0);
+    });
+
+    it('ambang bisa dioverride via minBytes', async () => {
+        const tiny = jpegFile('kecil.jpg', 1200);
+        const out = await compressImage(tiny, { minBytes: 0 });
+        expect(out.size).toBe(blobSize);
+        expect(bitmapCalls).toHaveLength(1);
     });
 
     it('toBlob null → original digunakan', async () => {
@@ -110,7 +125,7 @@ describe('image-compression (no resolution loss)', () => {
     });
 
     it('PNG transparency aman via webp alpha-preserving', async () => {
-        const png = new File([new Uint8Array(1200)], 'motif.png', { type: 'image/png' });
+        const png = new File([new Uint8Array(2 * 1024 * 1024)], 'motif.png', { type: 'image/png' });
         const out = await compressImage(png);
         expect(out.type).toBe('image/webp');
         expect(out.name).toBe('motif.webp');
@@ -119,11 +134,10 @@ describe('image-compression (no resolution loss)', () => {
     });
 
     it('multiple files mempertahankan urutan (index crop tidak tertukar)', async () => {
-        // file0 menyusut, file1 membesar→original, file2 gagal→original
+        // file0 menyusut→compressed, file1 kecil→dilewati, file2 gagal→original
         let calls = 0;
         vi.stubGlobal('createImageBitmap', async (file) => {
             calls += 1;
-            if (file.name === 'b.jpg') return { width: 100, height: 100, close: vi.fn() };
             if (file.name === 'c.jpg') throw new Error('decode gagal');
             return { width: 4000, height: 3000, close: vi.fn() };
         });
@@ -137,15 +151,15 @@ describe('image-compression (no resolution loss)', () => {
                 },
             }),
         });
-        const big = new File([new Uint8Array(5000)], 'a.jpg', { type: 'image/jpeg' });
-        const small = new File([new Uint8Array(5)], 'b.jpg', { type: 'image/jpeg' });
-        const broken = new File([new Uint8Array(5000)], 'c.jpg', { type: 'image/jpeg' });
+        const big = jpegFile('a.jpg');
+        const small = jpegFile('b.jpg', 5); // di bawah ambang → tanpa decode
+        const broken = jpegFile('c.jpg');
         const out = await compressImages([big, small, broken]);
         expect(out).toHaveLength(3);
         expect(out[0].size).toBe(10); // terkompres
-        expect(out[1]).toBe(small); // encode lebih besar → original
+        expect(out[1]).toBe(small); // dilewati ambang → original
         expect(out[2]).toBe(broken); // gagal → original
-        expect(calls).toBe(3);
+        expect(calls).toBe(2);
     });
 
     it('file yang sudah dioptimalkan tidak dikompres dua kali', async () => {
