@@ -87,8 +87,15 @@ class CompressProductImages extends Command
 
                         continue;
                     }
+                    // Re-encoded bytes change source_file_hash: an already-served
+                    // reference can only be replaced by a full rebuild, never
+                    // by incremental append (which would fail Changed-image).
+                    $wasServed = in_array($photo->index_status, ['indexed', 'indexing', 'rebuild-required'], true);
                     $updated = ProductPhoto::whereKey($photo->id)->where('updated_at', $photo->getRawOriginal('updated_at'))->where('path', $photo->path)
-                        ->update([...$stored, 'index_status' => 'pending']);
+                        ->update([...$stored, 'index_status' => $wasServed ? 'rebuild-required' : 'pending']);
+                    if ($wasServed && $updated) {
+                        Cache::forever('visual-index-rebuild-required', "photo {$photo->id} re-encoded; full rebuild required");
+                    }
                     if (! $updated) {
                         app(ProductImages::class)->discard($stored);
                         $skipped++;

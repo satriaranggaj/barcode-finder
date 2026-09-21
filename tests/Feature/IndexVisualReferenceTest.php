@@ -95,6 +95,37 @@ class IndexVisualReferenceTest extends TestCase
         $this->assertSame('indexed', $second->fresh()->index_status);
     }
 
+    public function test_job_coalesces_photo_and_feedback_into_one_generation(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'SKU123']);
+        $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'pending']);
+        $row = SearchFeedback::create([
+            'user_id' => $admin->id, 'confirmed_product_id' => $product->id,
+            'predicted_sku' => 'SKU123', 'confirmed_sku' => 'SKU123',
+            'disk' => 'local', 'query_image_path' => 'verified-search/q.webp',
+            'photo_hash' => str_repeat('b', 64), 'dhash' => str_repeat('1', 16),
+            'training_status' => 'verified', 'reference_eligible' => true,
+        ]);
+        $builder = $this->fakeBuilder();
+        $builder->shouldReceive('acquireLock')->once()->andReturn(true);
+        $builder->shouldReceive('pruneStaleWorkspaces')->once()->andReturn(0);
+        // Exactly ONE builder invocation drains the whole batch.
+        $builder->shouldReceive('appendPending')->once()->andReturnUsing(function () use ($photo, $row) {
+            $photo->update(['index_status' => 'indexed']);
+            $row->update(['indexed_at' => now()]);
+
+            return ['added' => 2, 'skipped' => 0, 'generation' => 'generation-coalesced',
+                'photos' => [$photo->id], 'feedback' => [$row->id]];
+        });
+        $builder->shouldReceive('releaseLock')->once();
+
+        (new IndexVisualReference('photo', $photo->id))->handle($builder);
+
+        $this->assertSame('indexed', $photo->fresh()->index_status);
+        $this->assertNotNull($row->fresh()->indexed_at);
+    }
+
     public function test_job_rerun_is_idempotent_no_duplicate(): void
     {
         $product = Product::create(['sku' => 'SKU123']);

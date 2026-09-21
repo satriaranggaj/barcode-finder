@@ -232,8 +232,22 @@ class VisualIndexBuilder
                 'generation' => $result['generation'] ?? null, 'photos' => $writtenPhotos, 'feedback' => $writtenFeedback];
         } catch (\RuntimeException $error) {
             if ($this->isRebuildRequired($error->getMessage())) {
-                if ($writtenPhotos !== []) {
+                // Precise blame for a single changed reference: only that row
+                // waits for a rebuild while the rest of the batch stays
+                // retryable (failed), so one edited photo cannot park nine
+                // innocent photos in rebuild-required with it.
+                $blamedPhoto = $this->changedImagePhotoId($error->getMessage());
+                if ($blamedPhoto !== null && ! in_array($blamedPhoto, $writtenPhotos, true)) {
+                    $blamedPhoto = null;
+                }
+                $retryable = $blamedPhoto === null ? [] : array_values(array_diff($writtenPhotos, [$blamedPhoto]));
+                if ($blamedPhoto !== null) {
+                    ProductPhoto::whereKey($blamedPhoto)->update(['index_status' => 'rebuild-required']);
+                } elseif ($writtenPhotos !== []) {
                     ProductPhoto::whereKey($writtenPhotos)->update(['index_status' => 'rebuild-required']);
+                }
+                if ($retryable !== []) {
+                    ProductPhoto::whereKey($retryable)->where('index_status', 'indexing')->update(['index_status' => 'failed']);
                 }
                 // Store the TAIL: the actual ValueError sits at the end of
                 // the message (head is only INFO preamble from model load).
@@ -268,21 +282,77 @@ class VisualIndexBuilder
     }
 
     /**
-     * Remove crashed-build workspaces older than a day. Only UUID-named
-     * index-builds directories are ever touched.
+     * Extract the catalog photo id blamed by a
+     * "Changed image/metadata: <SKU>/<id>.<ext>" failure, if any.
+     * verified-* references belong to search feedback (left pending).
+     */
+    public function changedImagePhotoId(string $message): ?int
+    {
+        if (! preg_match('/Changed image\/metadata:\s*(\S+?); use --rebuild/', $message, $matches)) {
+            return null;
+        }
+        $base = pathinfo($matches[1], PATHINFO_FILENAME);
+        if (str_starts_with($base, 'verified-') || ! ctype_digit($base)) {
+            return null;
+        }
+
+        return (int) $base;
+    }
+
+    /**
+     * Remove crashed-build workspaces older than a day. Maintenance only:
+     * this method NEVER throws, so a root-owned or unreadable leftover can
+     * report-and-continue instead of failing the main indexing run.
+     * Only direct UUID-named children of index-builds are ever touched;
+     * symlinks are never followed or removed.
      */
     public function pruneStaleWorkspaces(): int
     {
-        $disk = Storage::disk('local');
+        try {
+            $base = Storage::disk('local')->path('index-builds');
+        } catch (\Throwable $error) {
+            report($error);
+
+            return 0;
+        }
+        if (! is_dir($base) || is_link($base)) {
+            return 0;
+        }
+        try {
+            $entries = scandir($base);
+        } catch (\Throwable $error) {
+            report($error);
+
+            return 0;
+        }
+        if (! is_array($entries)) {
+            return 0;
+        }
         $pruned = 0;
-        foreach ($disk->allDirectories('index-builds') as $directory) {
-            $base = basename($directory);
-            if (! preg_match('/^[0-9a-f-]{36}$/D', $base)) {
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') {
                 continue;
             }
-            if ($disk->lastModified($directory) < time() - 86400) {
-                $this->removeDirectory($disk->path($directory));
-                $pruned++;
+            if (! preg_match('/^[0-9a-f-]{36}$/D', $entry)) {
+                continue;
+            }
+            $directory = $base.DIRECTORY_SEPARATOR.$entry;
+            try {
+                if (is_link($directory) || ! is_dir($directory)) {
+                    continue;
+                }
+                $modified = @filemtime($directory);
+                if ($modified !== false && (int) $modified > time() - 86400) {
+                    continue;
+                }
+                $this->removeDirectory($directory);
+                if (! is_dir($directory)) {
+                    $pruned++;
+                }
+            } catch (\Throwable $error) {
+                report($error);
+
+                continue;
             }
         }
 
@@ -437,13 +507,34 @@ class VisualIndexBuilder
 
     private function removeDirectory(string $directory): void
     {
-        if (! is_dir($directory)) {
+        // Tolerant cleanup: per-entry failures (root-owned leftovers) must
+        // surface as reports from the caller, never as an exception here —
+        // the main indexing run depends on it via finally/prune paths.
+        if (! is_dir($directory) || is_link($directory)) {
             return;
         }
-        collect(new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        ))->each(fn ($file) => $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname()));
-        rmdir($directory);
+        try {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::CHILD_FIRST
+            );
+        } catch (\Throwable) {
+            return;
+        }
+        foreach ($iterator as $file) {
+            try {
+                if ($file->isLink()) {
+                    continue;
+                }
+                $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+        try {
+            rmdir($directory);
+        } catch (\Throwable) {
+            // Partially removed (e.g. unreadable child): retried next run.
+        }
     }
 }

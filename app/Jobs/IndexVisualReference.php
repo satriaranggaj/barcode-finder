@@ -48,7 +48,13 @@ class IndexVisualReference implements ShouldQueue
         }
         Cache::put('visual-index-building', true, 300);
         try {
-            $builder->pruneStaleWorkspaces();
+            // Maintenance must never fail the main run (prune is fail-safe
+            // by contract; this guard covers any future regression).
+            try {
+                $builder->pruneStaleWorkspaces();
+            } catch (\Throwable $error) {
+                report($error);
+            }
             // appendPending owns all status transitions (indexing → indexed
             // / failed / rebuild-required) and is a no-op when nothing is
             // pending — including when the hint row itself is already

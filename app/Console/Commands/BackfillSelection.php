@@ -76,10 +76,17 @@ class BackfillSelection extends Command
                 // Optimistic concurrency: never clobber an admin edit that
                 // landed while the AI call was in flight. crop updates bump
                 // updated_at, so a mismatch means someone else wrote first.
+                // A new auto crop changes the embedded vector: already-served
+                // references wait for a full rebuild instead of poisoning an
+                // incremental batch with a Changed-image failure.
+                $wasServed = in_array($photo->index_status, ['indexed', 'indexing', 'rebuild-required'], true);
                 $updated = ProductPhoto::whereKey($photo->id)
                     ->where('updated_at', $photo->getRawOriginal('updated_at'))
                     ->update(['crop' => $crop, 'selection_source' => 'auto',
-                        'selection_verified' => false, 'index_status' => 'pending']);
+                        'selection_verified' => false, 'index_status' => $wasServed ? 'rebuild-required' : 'pending']);
+                if ($wasServed && $updated) {
+                    Cache::forever('visual-index-rebuild-required', "photo {$photo->id} selection changed; full rebuild required");
+                }
                 if (! $updated) {
                     $skipped++;
                     $this->line("{$label} - SKIP (changed during backfill)");

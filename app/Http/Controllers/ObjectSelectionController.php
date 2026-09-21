@@ -6,6 +6,7 @@ use App\Models\ProductPhoto;
 use App\Services\CropCoordinates;
 use App\Services\RetrievalClient;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -68,8 +69,23 @@ class ObjectSelectionController extends Controller
     {
         $request->validate(['crop_json' => ['nullable', 'json'], 'selection_source' => ['required', Rule::in(CropCoordinates::SELECTION_MODES)]]);
         $crop = CropCoordinates::fromJson($request->input('crop_json'));
-        $photo->update(['crop' => $crop,
-            'selection_source' => $crop ? $request->input('selection_source') : 'full', 'selection_verified' => true, 'index_status' => 'pending']);
+        $newSource = $crop ? $request->input('selection_source') : 'full';
+        // Only a real representation change matters: crop box or selection
+        // source alter the embedded vector, selection_verified alone does not.
+        // Order-insensitive compare so identical boxes never false-trigger.
+        $representationChanged = $photo->crop != $crop || $photo->selection_source !== $newSource;
+        if ($representationChanged && in_array($photo->index_status, ['indexed', 'indexing', 'rebuild-required'], true)) {
+            // HNSW has no safe in-place vector replacement: an already-served
+            // reference whose crop/selection changed needs a full rebuild.
+            // Never dispatch incremental for it.
+            $photo->update(['crop' => $crop, 'selection_source' => $newSource,
+                'selection_verified' => true, 'index_status' => 'rebuild-required']);
+            Cache::forever('visual-index-rebuild-required', "photo {$photo->id} crop/selection changed; full rebuild required");
+
+            return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. Perubahan memerlukan full rebuild (search:build-index) agar berlaku di pencarian.');
+        }
+        $photo->update(['crop' => $crop, 'selection_source' => $newSource,
+            'selection_verified' => true, 'index_status' => 'pending']);
         \App\Jobs\IndexVisualReference::dispatch('photo', $photo->id)->afterCommit();
 
         return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. AI sedang mempelajari reference yang diperbarui.');

@@ -19,8 +19,39 @@ from ..preprocessing.selection import BoundingBox
 from ..features.attributes import parse_attributes, VERSION as ATTRIBUTE_VERSION
 
 
+# Authoritative input keys defining a reference. Index-time derived values
+# (parsed_attributes, source_file_hash, _input_metadata) are excluded, and
+# missing keys read as None, so generations built before an optional key
+# existed still compare equal instead of raising false "Changed
+# image/metadata".
+INPUT_METADATA_KEYS = ('product_id', 'description', 'trusted_attributes',
+    'source_photo_hash', 'crop', 'selection_source', 'selection_verified',
+    'source', 'capture_group', 'category', 'sub_category', 'family')
+
+
+def canonical_input(extra: dict) -> dict:
+    """Canonical INPUT metadata for existing-reference comparison.
+
+    Derived keys are excluded and missing keys normalize to None, so neither
+    JSON key order, newly introduced optional keys, nor recomputed derived
+    values can fake a change. Genuine representation-affecting edits
+    (crop/selection/source bytes/description) still compare unequal.
+    """
+    if not isinstance(extra, dict):
+        return {}
+    return {key: extra.get(key) for key in INPUT_METADATA_KEYS}
+
+
 def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = False, reference_limit_per_sku: int | None = None, use_selection: bool = True) -> dict:
-    """Incremental append; changed/deleted references require explicit --rebuild.
+    """Incremental delta append or full-snapshot rebuild.
+
+    Without --rebuild the dataset is a DELTA: only new references are
+    embedded and appended onto a clone of CURRENT; unchanged image_ids are
+    skipped by idempotent dedup, and changed/deleted references refuse with
+    rebuild-required instead of corrupting the serving snapshot. Deletion
+    detection applies ONLY to --rebuild, where the dataset is the full
+    authoritative snapshot. With --rebuild a fresh generation is built from
+    scratch, so changed/deleted references and new signatures are allowed.
 
     Lock prevents concurrent publication. Old generations remain available for
     running readers and rollback; remove manually only after workers stop.
@@ -50,10 +81,14 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                         manager = FaissIndexManager(database, service.signature)
                         manager.indexes = {name: {rep: faiss.clone_index(index) for rep, index in indexes.items()}
                                            for name, indexes in old.indexes.items()}
+                        old_count = manager.count
                     finally:
                         old.close()
                 else:
                     manager = FaissIndexManager(Path(workspace) / 'metadata.sqlite', service.signature)
+                    # Fresh generations (first build or --rebuild) start empty;
+                    # every dataset row is authoritative here.
+                    old_count = 0
                 added, skipped = 0, 0
                 seen = set()
                 sku_counts = {}
@@ -86,9 +121,20 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                            **{key: extra.get(key, metadata.get(sku, {}).get(key)) for key in ('product_id', 'category', 'sub_category', 'family')}}
                     if existing:
                         stored_extra = json.loads(existing['extra'])
-                        comparable_extra = stored_extra.get('_input_metadata', stored_extra)
-                        if comparable_extra != input_extra or any(
-                                str(existing.get(k)) != str(v) for k, v in row.items() if k != 'extra'):
+                        baseline = stored_extra.get('_input_metadata', stored_extra)
+                        # Canonical INPUT-vs-INPUT comparison: derived values
+                        # (auto-selection results, parsed attributes, content
+                        # hashes) excluded, missing keys normalized to None.
+                        if canonical_input(baseline) != canonical_input(input_extra):
+                            raise ValueError(f'Changed image/metadata: {image_id}; use --rebuild')
+                        # File-byte change detection via content hash. photo_hash
+                        # is content-derived too but never recomputed for
+                        # existing rows (decode avoided), so source_file_hash
+                        # is the authoritative file-change signal here.
+                        stored_file_hash = baseline.get('source_file_hash') if isinstance(baseline, dict) else None
+                        if stored_file_hash is not None and stored_file_hash != extra['source_file_hash']:
+                            raise ValueError(f'Changed image/metadata: {image_id}; use --rebuild')
+                        if any(str(existing.get(k)) != str(v) for k, v in row.items() if k != 'extra'):
                             raise ValueError(f'Changed image/metadata: {image_id}; use --rebuild')
                         skipped += 1
                     else:
@@ -118,8 +164,16 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                         manager.db.commit(); manager.db.execute('BEGIN')
                 if not seen:
                     raise ValueError('Dataset contains no supported reference images')
-                if manager.count != len(seen):
-                    raise ValueError('References deleted from dataset; use --rebuild')
+                if rebuild:
+                    # Full authoritative snapshot: absent references are
+                    # genuinely deleted, changed ones were rebuilt fresh.
+                    if manager.count != len(seen):
+                        raise ValueError('References deleted from dataset; use --rebuild')
+                elif manager.count != old_count + added:
+                    # Delta append invariant: clones plus appended rows only.
+                    # old_count is captured right after cloning CURRENT, so a
+                    # mismatch means an internal inconsistency — never publish.
+                    raise ValueError('Incomplete incremental append; index unchanged, use --rebuild')
                 manager.db.commit()
                 generation = f'generation-{uuid.uuid4().hex}'
                 directory = root / generation
@@ -135,7 +189,7 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                 pointer = root / 'CURRENT.tmp'
                 pointer.write_text(generation, encoding='utf-8')
                 os.replace(pointer, root / 'CURRENT')
-                return {'added': added, 'skipped': skipped, 'references': len(seen), 'generation': generation}
+                return {'added': added, 'skipped': skipped, 'references': manager.count, 'generation': generation}
             finally:
                 if manager is not None:
                     manager.close()

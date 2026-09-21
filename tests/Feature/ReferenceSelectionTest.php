@@ -181,6 +181,72 @@ class ReferenceSelectionTest extends TestCase
         $this->assertSame('pending', $fresh->index_status);
     }
 
+    public function test_edit_indexed_photo_flags_rebuild_without_dispatch(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        \Illuminate\Support\Facades\Cache::forget('visual-index-rebuild-required');
+        config(['retrieval.driver' => 'faiss']);
+        $product = Product::create(['sku' => 'REF-REBUILD']);
+        $photo = $product->photos()->create([
+            'path' => 'products/rebuild.jpg',
+            'crop' => ['x' => 0.1, 'y' => 0.1, 'width' => 0.6, 'height' => 0.6],
+            'selection_source' => 'manual',
+            'selection_verified' => true,
+            'index_status' => 'indexed',
+        ]);
+        $this->actingAs($this->admin())
+            ->put(route('admin.photos.selection.update', $photo), [
+                'crop_json' => json_encode(['x' => 0.05, 'y' => 0.05, 'width' => 0.9, 'height' => 0.9]),
+                'selection_source' => 'manual',
+            ])->assertRedirect();
+        $this->assertSame('rebuild-required', $photo->fresh()->index_status);
+        $this->assertNotNull(\Illuminate\Support\Facades\Cache::get('visual-index-rebuild-required'));
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\IndexVisualReference::class);
+    }
+
+    public function test_edit_pending_photo_stays_pending_with_dispatch(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        config(['retrieval.driver' => 'faiss']);
+        $product = Product::create(['sku' => 'REF-PENDING-EDIT']);
+        $photo = $product->photos()->create([
+            'path' => 'products/pending.jpg',
+            'crop' => ['x' => 0.1, 'y' => 0.1, 'width' => 0.6, 'height' => 0.6],
+            'selection_source' => 'manual',
+            'selection_verified' => true,
+            'index_status' => 'pending',
+        ]);
+        $this->actingAs($this->admin())
+            ->put(route('admin.photos.selection.update', $photo), [
+                'crop_json' => json_encode(['x' => 0.05, 'y' => 0.05, 'width' => 0.9, 'height' => 0.9]),
+                'selection_source' => 'manual',
+            ])->assertRedirect();
+        $this->assertSame('pending', $photo->fresh()->index_status);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\IndexVisualReference::class,
+            fn ($job) => $job->kind === 'photo' && $job->id === $photo->id);
+    }
+
+    public function test_resaving_identical_crop_does_not_flag_rebuild(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        \Illuminate\Support\Facades\Cache::forget('visual-index-rebuild-required');
+        config(['retrieval.driver' => 'faiss']);
+        $product = Product::create(['sku' => 'REF-SAME']);
+        $crop = ['x' => 0.1, 'y' => 0.1, 'width' => 0.6, 'height' => 0.6];
+        $photo = $product->photos()->create([
+            'path' => 'products/same.jpg', 'crop' => $crop,
+            'selection_source' => 'manual', 'selection_verified' => true,
+            'index_status' => 'indexed',
+        ]);
+        $this->actingAs($this->admin())
+            ->put(route('admin.photos.selection.update', $photo), [
+                'crop_json' => json_encode($crop),
+                'selection_source' => 'manual',
+            ])->assertRedirect();
+        $this->assertSame('pending', $photo->fresh()->index_status);
+        $this->assertNull(\Illuminate\Support\Facades\Cache::get('visual-index-rebuild-required'));
+    }
+
     public function test_edit_page_carries_stored_crop_and_source(): void
     {
         config(['retrieval.driver' => 'faiss']);
