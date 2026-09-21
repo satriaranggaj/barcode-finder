@@ -1,6 +1,6 @@
 import './object-selection';
 import { COMPRESSION_MIN_BYTES, compressImages, isCompressible } from './image-compression';
-import { setSearchLoading } from './submit-loading';
+import { handleSearchSubmit, resetSearchButtons } from './submit-loading';
 
 // One photo per request bounds POST size and PHP inference time for multi-upload.
 document.querySelectorAll('[data-upload-designs]').forEach(form => {
@@ -185,28 +185,19 @@ document.querySelectorAll('form').forEach((form) => {
 	if (form.hasAttribute('data-upload-designs')) return;
 	const imageInput = form.querySelector('input[data-image-preview][name="image"]');
 	if (!imageInput) return;
+	// Loading tombol hanya aktif di sini: event submit native fire strictly
+	// setelah validasi browser lolos. Gating kompresi + fail-closed finalize
+	// ditangani handleSearchSubmit (teruji); tombol tetap aktif sampai
+	// navigasi terjadi (pencarian AI butuh waktu di server).
 	form.addEventListener('submit', (event) => {
-		if (form.dataset.lenskuResubmit === 'true') {
-			delete form.dataset.lenskuResubmit;
-			return;
-		}
-		// Loading state langsung saat trigger: pencarian AI butuh waktu
-		// (halaman pindah setelah server selesai), user harus tahu proses
-		// sudah mulai. Tetap aktif sampai navigasi terjadi.
-		setSearchLoading(document.getElementById('home-search-submit') || form.querySelector('[data-preview-submit]'), true);
-		if (!imageInput._lenskuCompress) return;
-		event.preventDefault();
-		Promise.resolve(imageInput._lenskuCompress).catch(() => {}).finally(() => {
-			form.dataset.lenskuResubmit = 'true';
-			form.requestSubmit();
-		});
+		handleSearchSubmit(form, imageInput, event);
 	});
 });
 
 // Reset tombol bila user kembali dengan tombol back (bfcache bisa
 // menampilkan state loading yang basi).
 window.addEventListener('pageshow', () => {
-	setSearchLoading(document.getElementById('home-search-submit'), false);
+	resetSearchButtons(document);
 });
 
 
