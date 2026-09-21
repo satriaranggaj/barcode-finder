@@ -132,6 +132,20 @@ class DeltaSemanticsTests(unittest.TestCase):
         result = build(self.dataset, self.index_root, self.service)
         self.assertEqual((result['added'], result['skipped']), (0, 1))
 
+    def test_verification_only_flip_is_not_a_change(self):
+        target = self.write_ref('SKU123', 'a.png', (200, 20, 20))
+        raw = json.loads(target.with_suffix('.json').read_text(encoding='utf-8'))
+        raw['selection_verified'] = False
+        target.with_suffix('.json').write_text(json.dumps(raw))
+        build(self.dataset, self.index_root, self.service)
+        # Same bytes, same crop, same selection_source; only the provenance
+        # flag flips false -> true. Must skip, never require a rebuild.
+        raw['selection_verified'] = True
+        target.with_suffix('.json').write_text(json.dumps(raw))
+        result = build(self.dataset, self.index_root, self.service)
+        self.assertEqual((result['added'], result['skipped']), (0, 1))
+        self.assertEqual(self.current_count(), 1)
+
     def test_rebuild_with_deleted_reference(self):
         self.write_ref('SKU123', 'a.png', (200, 20, 20))
         self.write_ref('SKU123', 'b.png', (20, 200, 20))

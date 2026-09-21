@@ -71,18 +71,36 @@ class ObjectSelectionController extends Controller
         $crop = CropCoordinates::fromJson($request->input('crop_json'));
         $newSource = $crop ? $request->input('selection_source') : 'full';
         // Only a real representation change matters: crop box or selection
-        // source alter the embedded vector, selection_verified alone does not.
+        // source alter the embedded vector, selection_verified alone does not
+        // (it is excluded from the Python canonical comparison as well).
         // Order-insensitive compare so identical boxes never false-trigger.
         $representationChanged = $photo->crop != $crop || $photo->selection_source !== $newSource;
-        if ($representationChanged && in_array($photo->index_status, ['indexed', 'indexing', 'rebuild-required'], true)) {
-            // HNSW has no safe in-place vector replacement: an already-served
-            // reference whose crop/selection changed needs a full rebuild.
-            // Never dispatch incremental for it.
-            $photo->update(['crop' => $crop, 'selection_source' => $newSource,
-                'selection_verified' => true, 'index_status' => 'rebuild-required']);
-            Cache::forever('visual-index-rebuild-required', "photo {$photo->id} crop/selection changed; full rebuild required");
+        $wasServed = in_array($photo->index_status, ['indexed', 'indexing', 'rebuild-required'], true);
+        if ($representationChanged) {
+            if ($wasServed) {
+                // HNSW has no safe in-place vector replacement: an
+                // already-served reference whose crop/selection changed needs
+                // a full rebuild. Never dispatch incremental for it.
+                $photo->update(['crop' => $crop, 'selection_source' => $newSource,
+                    'selection_verified' => true, 'index_status' => 'rebuild-required']);
+                Cache::forever('visual-index-rebuild-required', "photo {$photo->id} crop/selection changed; full rebuild required");
 
-            return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. Perubahan memerlukan full rebuild (search:build-index) agar berlaku di pencarian.');
+                return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. Perubahan memerlukan full rebuild (search:build-index) agar berlaku di pencarian.');
+            }
+        } elseif ($photo->index_status === 'indexed') {
+            // Identical representation on an indexed photo: the serving vector
+            // is still valid. Keep indexed, touch nothing else, and do NOT
+            // launch an incremental build for an equivalent generation.
+            $photo->update(['crop' => $crop, 'selection_source' => $newSource, 'selection_verified' => true]);
+
+            return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. Tidak ada perubahan area sehingga index yang aktif tetap berlaku.');
+        } elseif ($wasServed) {
+            // indexing/rebuild-required with identical values: leave the
+            // status untouched (never heal back to indexed/pending here),
+            // update verification metadata only, dispatch nothing.
+            $photo->update(['crop' => $crop, 'selection_source' => $newSource, 'selection_verified' => true]);
+
+            return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan.');
         }
         $photo->update(['crop' => $crop, 'selection_source' => $newSource,
             'selection_verified' => true, 'index_status' => 'pending']);

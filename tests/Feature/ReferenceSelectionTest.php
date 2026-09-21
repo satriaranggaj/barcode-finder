@@ -226,7 +226,7 @@ class ReferenceSelectionTest extends TestCase
             fn ($job) => $job->kind === 'photo' && $job->id === $photo->id);
     }
 
-    public function test_resaving_identical_crop_does_not_flag_rebuild(): void
+    public function test_resaving_identical_crop_keeps_indexed_without_queue(): void
     {
         \Illuminate\Support\Facades\Queue::fake();
         \Illuminate\Support\Facades\Cache::forget('visual-index-rebuild-required');
@@ -243,8 +243,94 @@ class ReferenceSelectionTest extends TestCase
                 'crop_json' => json_encode($crop),
                 'selection_source' => 'manual',
             ])->assertRedirect();
-        $this->assertSame('pending', $photo->fresh()->index_status);
+        $this->assertSame('indexed', $photo->fresh()->index_status);
         $this->assertNull(\Illuminate\Support\Facades\Cache::get('visual-index-rebuild-required'));
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\IndexVisualReference::class);
+    }
+
+    public function test_verification_only_change_keeps_indexed_without_queue(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        \Illuminate\Support\Facades\Cache::forget('visual-index-rebuild-required');
+        config(['retrieval.driver' => 'faiss']);
+        $product = Product::create(['sku' => 'REF-VERIFY']);
+        $crop = ['x' => 0.1, 'y' => 0.1, 'width' => 0.6, 'height' => 0.6];
+        $photo = $product->photos()->create([
+            'path' => 'products/verify.jpg', 'crop' => $crop,
+            'selection_source' => 'manual', 'selection_verified' => false,
+            'index_status' => 'indexed',
+        ]);
+        $this->actingAs($this->admin())
+            ->put(route('admin.photos.selection.update', $photo), [
+                'crop_json' => json_encode($crop),
+                'selection_source' => 'manual',
+            ])->assertRedirect();
+        $fresh = $photo->fresh();
+        $this->assertSame('indexed', $fresh->index_status);
+        $this->assertTrue($fresh->selection_verified);
+        $this->assertNull(\Illuminate\Support\Facades\Cache::get('visual-index-rebuild-required'));
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\IndexVisualReference::class);
+    }
+
+    public function test_resaving_identical_crop_never_heals_rebuild_required(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        config(['retrieval.driver' => 'faiss']);
+        $product = Product::create(['sku' => 'REF-STUCK']);
+        $crop = ['x' => 0.1, 'y' => 0.1, 'width' => 0.6, 'height' => 0.6];
+        $photo = $product->photos()->create([
+            'path' => 'products/stuck.jpg', 'crop' => $crop,
+            'selection_source' => 'manual', 'selection_verified' => true,
+            'index_status' => 'rebuild-required',
+        ]);
+        $this->actingAs($this->admin())
+            ->put(route('admin.photos.selection.update', $photo), [
+                'crop_json' => json_encode($crop),
+                'selection_source' => 'manual',
+            ])->assertRedirect();
+        $this->assertSame('rebuild-required', $photo->fresh()->index_status);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\IndexVisualReference::class);
+    }
+
+    public function test_indexing_photo_with_identical_crop_left_untouched(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        config(['retrieval.driver' => 'faiss']);
+        $product = Product::create(['sku' => 'REF-BUSY']);
+        $crop = ['x' => 0.1, 'y' => 0.1, 'width' => 0.6, 'height' => 0.6];
+        $photo = $product->photos()->create([
+            'path' => 'products/busy.jpg', 'crop' => $crop,
+            'selection_source' => 'manual', 'selection_verified' => true,
+            'index_status' => 'indexing',
+        ]);
+        $this->actingAs($this->admin())
+            ->put(route('admin.photos.selection.update', $photo), [
+                'crop_json' => json_encode($crop),
+                'selection_source' => 'manual',
+            ])->assertRedirect();
+        $this->assertSame('indexing', $photo->fresh()->index_status);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\IndexVisualReference::class);
+    }
+
+    public function test_pending_photo_with_identical_crop_stays_pending_with_queue(): void
+    {
+        \Illuminate\Support\Facades\Queue::fake();
+        config(['retrieval.driver' => 'faiss']);
+        $product = Product::create(['sku' => 'REF-PENDING-SAME']);
+        $crop = ['x' => 0.1, 'y' => 0.1, 'width' => 0.6, 'height' => 0.6];
+        $photo = $product->photos()->create([
+            'path' => 'products/pendingsame.jpg', 'crop' => $crop,
+            'selection_source' => 'manual', 'selection_verified' => false,
+            'index_status' => 'pending',
+        ]);
+        $this->actingAs($this->admin())
+            ->put(route('admin.photos.selection.update', $photo), [
+                'crop_json' => json_encode($crop),
+                'selection_source' => 'manual',
+            ])->assertRedirect();
+        $this->assertSame('pending', $photo->fresh()->index_status);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\IndexVisualReference::class,
+            fn ($job) => $job->kind === 'photo' && $job->id === $photo->id);
     }
 
     public function test_edit_page_carries_stored_crop_and_source(): void

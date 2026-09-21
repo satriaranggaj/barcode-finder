@@ -20,12 +20,13 @@ from ..features.attributes import parse_attributes, VERSION as ATTRIBUTE_VERSION
 
 
 # Authoritative input keys defining a reference. Index-time derived values
-# (parsed_attributes, source_file_hash, _input_metadata) are excluded, and
-# missing keys read as None, so generations built before an optional key
-# existed still compare equal instead of raising false "Changed
-# image/metadata".
+# (parsed_attributes, source_file_hash, _input_metadata) are excluded, and so
+# is selection_verified: verification is provenance only and never enters the
+# embedded vector (only crop/selection_source steer embed()). Missing keys
+# read as None, so generations built before an optional key existed still
+# compare equal instead of raising false "Changed image/metadata".
 INPUT_METADATA_KEYS = ('product_id', 'description', 'trusted_attributes',
-    'source_photo_hash', 'crop', 'selection_source', 'selection_verified',
+    'source_photo_hash', 'crop', 'selection_source',
     'source', 'capture_group', 'category', 'sub_category', 'family')
 
 
