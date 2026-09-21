@@ -1,5 +1,6 @@
 import './object-selection';
 import { COMPRESSION_MIN_BYTES, compressImages, isCompressible } from './image-compression';
+import { setSearchLoading } from './submit-loading';
 
 // One photo per request bounds POST size and PHP inference time for multi-upload.
 document.querySelectorAll('[data-upload-designs]').forEach(form => {
@@ -189,6 +190,10 @@ document.querySelectorAll('form').forEach((form) => {
 			delete form.dataset.lenskuResubmit;
 			return;
 		}
+		// Loading state langsung saat trigger: pencarian AI butuh waktu
+		// (halaman pindah setelah server selesai), user harus tahu proses
+		// sudah mulai. Tetap aktif sampai navigasi terjadi.
+		setSearchLoading(document.getElementById('home-search-submit') || form.querySelector('[data-preview-submit]'), true);
 		if (!imageInput._lenskuCompress) return;
 		event.preventDefault();
 		Promise.resolve(imageInput._lenskuCompress).catch(() => {}).finally(() => {
@@ -196,6 +201,12 @@ document.querySelectorAll('form').forEach((form) => {
 			form.requestSubmit();
 		});
 	});
+});
+
+// Reset tombol bila user kembali dengan tombol back (bfcache bisa
+// menampilkan state loading yang basi).
+window.addEventListener('pageshow', () => {
+	setSearchLoading(document.getElementById('home-search-submit'), false);
 });
 
 
