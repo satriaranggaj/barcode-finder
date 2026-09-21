@@ -68,6 +68,15 @@ class Settings:
     # noise, near-full-frame boxes are not a usable crop.
     selection_min_area: float = .02
     selection_max_area: float = .92
+    # Retention for published FAISS generations and stale build dirs.
+    # keep<=0 keeps every generation (generation cleanup disabled).
+    index_generations_keep: int = 3
+    # Newly superseded generations survive at least this long: FastAPI
+    # hot-reloads lazily, so in-flight requests may still hold the old one.
+    index_generation_grace_seconds: int = 3600
+    # Crashed build-* workspaces older than this are removed. Active builds
+    # are always fresh, so they can never look stale.
+    index_build_stale_hours: int = 24
 
     def __post_init__(self) -> None:
         if not 0 <= self.selection_padding <= .25 or not 0 <= self.global_weight <= 1:
@@ -119,6 +128,10 @@ class Settings:
             raise ValueError('WebP quality must be 75..95')
         if not 1200 <= self.catalog_side <= 1600 or not 300 <= self.thumbnail_side <= 500:
             raise ValueError('Derivative side limits out of range')
+        if self.index_generations_keep < 0 or self.index_generation_grace_seconds < 0:
+            raise ValueError('Generation retention settings must be nonnegative')
+        if self.index_build_stale_hours < 0:
+            raise ValueError('Build staleness setting must be nonnegative')
 
     @classmethod
     def from_env(cls, env_file: Path | None = None) -> 'Settings':

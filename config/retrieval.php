@@ -28,4 +28,10 @@ return [
     'index_path' => ($indexPath = env('FAISS_INDEX_PATH')) !== null && $indexPath !== ''
         ? $indexPath
         : base_path('ai-service/indexes'),
+    // Retention for published FAISS generations and stale build artifacts.
+    // keep<=0 keeps every generation; stale_hours/days<=0 disable that pruner.
+    'index_generations_keep' => ($v = env('INDEX_GENERATIONS_KEEP')) !== null && $v !== '' ? (int) $v : 3,
+    'index_generation_grace_seconds' => ($v = env('INDEX_GENERATION_GRACE_SECONDS')) !== null && $v !== '' ? (int) $v : 3600,
+    'index_build_stale_hours' => ($v = env('INDEX_BUILD_STALE_HOURS')) !== null && $v !== '' ? (int) $v : 24,
+    'index_export_retention_days' => ($v = env('INDEX_EXPORT_RETENTION_DAYS')) !== null && $v !== '' ? (int) $v : 3,
 ];

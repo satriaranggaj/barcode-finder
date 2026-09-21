@@ -300,35 +300,39 @@ class VisualIndexBuilder
     }
 
     /**
-     * Remove crashed-build workspaces older than a day. Maintenance only:
-     * this method NEVER throws, so a root-owned or unreadable leftover can
-     * report-and-continue instead of failing the main indexing run.
-     * Only direct UUID-named children of index-builds are ever touched;
-     * symlinks are never followed or removed.
+     * Workspaces older than the configured retention, listed for inspection
+     * (dry-run) or deletion. Each entry: name, path, size_mb, age_hours.
+     * Only direct UUID-named children of index-builds are ever listed;
+     * symlinks and unrelated entries are skipped, never followed.
      */
-    public function pruneStaleWorkspaces(): int
+    public function staleWorkspaceCandidates(): array
     {
+        $days = (int) config('retrieval.index_export_retention_days', 3);
+        if ($days <= 0) {
+            return [];
+        }
         try {
             $base = Storage::disk('local')->path('index-builds');
         } catch (\Throwable $error) {
             report($error);
 
-            return 0;
+            return [];
         }
         if (! is_dir($base) || is_link($base)) {
-            return 0;
+            return [];
         }
         try {
             $entries = scandir($base);
         } catch (\Throwable $error) {
             report($error);
 
-            return 0;
+            return [];
         }
         if (! is_array($entries)) {
-            return 0;
+            return [];
         }
-        $pruned = 0;
+        $cutoff = time() - $days * 86400;
+        $candidates = [];
         foreach ($entries as $entry) {
             if ($entry === '.' || $entry === '..') {
                 continue;
@@ -342,13 +346,12 @@ class VisualIndexBuilder
                     continue;
                 }
                 $modified = @filemtime($directory);
-                if ($modified !== false && (int) $modified > time() - 86400) {
+                if ($modified !== false && (int) $modified > $cutoff) {
                     continue;
                 }
-                $this->removeDirectory($directory);
-                if (! is_dir($directory)) {
-                    $pruned++;
-                }
+                $candidates[] = ['name' => $entry, 'path' => $directory,
+                    'size_mb' => round($this->directorySize($directory) / 1048576, 1),
+                    'age_hours' => $modified === false ? null : round((time() - (int) $modified) / 3600, 1)];
             } catch (\Throwable $error) {
                 report($error);
 
@@ -356,7 +359,77 @@ class VisualIndexBuilder
             }
         }
 
+        return $candidates;
+    }
+
+    /**
+     * Remove one UUID workspace. Validates location before deleting;
+     * returns false (never throws) when unsafe or unremovable.
+     */
+    public function removeWorkspace(string $path): bool
+    {
+        try {
+            $base = realpath(Storage::disk('local')->path('index-builds'));
+            if ($base === false || ! preg_match('/^[0-9a-f-]{36}$/D', basename($path))) {
+                return false;
+            }
+            $real = realpath($path);
+            if ($real === false || dirname($real) !== $base || is_link($path)) {
+                return false;
+            }
+            $this->removeDirectory($real);
+        } catch (\Throwable $error) {
+            report($error);
+
+            return false;
+        }
+
+        return ! is_dir($path);
+    }
+
+    /**
+     * Remove crashed-build workspaces older than the configured retention.
+     * Maintenance only: this method NEVER throws, so a root-owned or
+     * unreadable leftover can report-and-continue instead of failing the
+     * main indexing run.
+     */
+    public function pruneStaleWorkspaces(): int
+    {
+        $pruned = 0;
+        foreach ($this->staleWorkspaceCandidates() as $candidate) {
+            if ($this->removeWorkspace($candidate['path'])) {
+                $pruned++;
+            }
+        }
+
         return $pruned;
+    }
+
+    private function directorySize(string $directory): int
+    {
+        $total = 0;
+        try {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST
+            );
+        } catch (\Throwable) {
+            return 0;
+        }
+        foreach ($iterator as $file) {
+            try {
+                if ($file->isLink()) {
+                    continue;
+                }
+                if ($file->isFile()) {
+                    $total += $file->getSize();
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $total;
     }
 
     public function isRebuildRequired(string $message): bool

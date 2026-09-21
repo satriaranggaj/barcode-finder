@@ -112,8 +112,8 @@ class VisualIndexBuilderTest extends TestCase
         $fresh = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
         $disk->makeDirectory("index-builds/{$stale}");
         $disk->put("index-builds/{$stale}/x.txt", 'old');
-        // Backdate beyond the 24h staleness window.
-        touch($disk->path("index-builds/{$stale}"), time() - 90000);
+        // Backdate beyond the retention window (default 3 days).
+        touch($disk->path("index-builds/{$stale}"), time() - 4 * 86400);
         $disk->makeDirectory("index-builds/{$fresh}");
         $disk->put("index-builds/{$fresh}/x.txt", 'new');
 

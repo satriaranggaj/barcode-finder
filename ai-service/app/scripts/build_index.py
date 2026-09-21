@@ -15,6 +15,7 @@ from ..preprocessing.pipeline import photo_hash
 from ..search.service import RetrievalService, load_encoders, is_object_box
 from ..search.faiss_index import FaissIndexManager, current_generation, file_hash
 from .dataset import iter_images, load_metadata, read_photo
+from .retention import cleanup_index_root
 from ..preprocessing.selection import BoundingBox
 from ..features.attributes import parse_attributes, VERSION as ATTRIBUTE_VERSION
 
@@ -190,6 +191,15 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                 pointer = root / 'CURRENT.tmp'
                 pointer.write_text(generation, encoding='utf-8')
                 os.replace(pointer, root / 'CURRENT')
+                # Post-publish retention while the builder lock is still held:
+                # best-effort only, never fails a successful publication.
+                try:
+                    settings = service.settings
+                    cleanup_index_root(root, keep=settings.index_generations_keep,
+                                       grace_seconds=settings.index_generation_grace_seconds,
+                                       build_stale_hours=settings.index_build_stale_hours)
+                except Exception:
+                    logging.getLogger(__name__).exception('Index cleanup failed; published generation unaffected')
                 return {'added': added, 'skipped': skipped, 'references': manager.count, 'generation': generation}
             finally:
                 if manager is not None:
