@@ -15,7 +15,7 @@ from ..preprocessing.pipeline import photo_hash
 from ..search.service import RetrievalService, load_encoders, is_object_box
 from ..search.faiss_index import FaissIndexManager, current_generation, file_hash
 from .dataset import iter_images, load_metadata, read_photo
-from .retention import cleanup_index_root
+from .retention import cleanup_index_root, read_current, record_superseded
 from ..preprocessing.selection import BoundingBox
 from ..features.attributes import parse_attributes, VERSION as ATTRIBUTE_VERSION
 
@@ -188,6 +188,7 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                 except Exception:
                     shutil.rmtree(directory, ignore_errors=True)
                     raise
+                previous = read_current(root)
                 pointer = root / 'CURRENT.tmp'
                 pointer.write_text(generation, encoding='utf-8')
                 os.replace(pointer, root / 'CURRENT')
@@ -195,9 +196,11 @@ def build(dataset: Path, root: Path, service: RetrievalService, rebuild: bool = 
                 # best-effort only, never fails a successful publication.
                 try:
                     settings = service.settings
+                    record_superseded(root, previous)
                     cleanup_index_root(root, keep=settings.index_generations_keep,
                                        grace_seconds=settings.index_generation_grace_seconds,
-                                       build_stale_hours=settings.index_build_stale_hours)
+                                       build_stale_hours=settings.index_build_stale_hours,
+                                       own_pid=os.getpid())
                 except Exception:
                     logging.getLogger(__name__).exception('Index cleanup failed; published generation unaffected')
                 return {'added': added, 'skipped': skipped, 'references': manager.count, 'generation': generation}

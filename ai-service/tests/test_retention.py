@@ -5,6 +5,7 @@ accounting, invalid dirs untouched, symlinks safe, failed cleanup never
 fails publication, stale/fresh build-* handling, missing-CURRENT safety,
 and publish-correctness after the change (incremental + rebuild).
 """
+import json
 import os
 import shutil
 import tempfile
@@ -14,7 +15,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from app.scripts.build_index import build
-from app.scripts.retention import cleanup_index_root, read_current
+from app.scripts.retention import cleanup_index_root, read_current, record_superseded
 from app.search.faiss_index import current_generation
 from app.search.service import RetrievalService
 from app.config import Settings
@@ -160,6 +161,93 @@ class RetentionTests(unittest.TestCase):
         summary = cleanup_index_root(self.root / 'nope', keep=1, grace_seconds=0, build_stale_hours=0)
         self.assertEqual(summary['removed'], [])
         self.assertEqual(summary['kept'], [])
+
+    def write_state(self, mapping):
+        (self.root / '.retention.json').write_text(json.dumps({'superseded': mapping}))
+
+    def test_superseded_seconds_ago_survives_grace_despite_old_mtime(self):
+        old = self.make_gen('a', age=5 * 86400)
+        current = self.make_gen('c', age=0)
+        self.publish(current)
+        self.write_state({old: time.time()})
+        summary = cleanup_index_root(self.root, keep=1, grace_seconds=3600, build_stale_hours=0)
+        self.assertIn(old, summary['kept'])
+        self.assertTrue((self.root / old).exists())
+
+    def test_superseded_long_ago_becomes_eligible(self):
+        old = self.make_gen('a', age=5 * 86400)
+        current = self.make_gen('c', age=0)
+        self.publish(current)
+        self.write_state({old: time.time() - 7200})
+        summary = cleanup_index_root(self.root, keep=1, grace_seconds=3600, build_stale_hours=0)
+        self.assertIn(old, summary['removed'])
+        self.assertFalse((self.root / old).exists())
+
+    def test_record_superseded_is_atomic_and_valid(self):
+        old = self.make_gen('a', age=10)
+        record_superseded(self.root, old)
+        state_file = self.root / '.retention.json'
+        self.assertTrue(state_file.exists())
+        self.assertFalse((self.root / '.retention.json.tmp').exists())
+        data = json.loads(state_file.read_text(encoding='utf-8'))
+        self.assertIn(old, data['superseded'])
+        # Re-recording prunes entries for vanished generations.
+        shutil.rmtree(self.root / old)
+        record_superseded(self.root, None)
+        data = json.loads(state_file.read_text(encoding='utf-8'))
+        self.assertNotIn(old, data['superseded'])
+
+    def test_current_flip_mid_cleanup_is_never_deleted(self):
+        old1 = self.make_gen('1', age=100000)
+        old2 = self.make_gen('2', age=90000)
+        current = self.make_gen('c', age=0)
+        self.publish(current)
+        import app.scripts.retention as retention_module
+        real_rmtree = retention_module.shutil.rmtree
+        flipped = []
+
+        def flipping(path, *args, **kwargs):
+            if not flipped:
+                flipped.append(True)
+                # Simulate a concurrent publication switching CURRENT to a
+                # candidate that cleanup already planned to remove.
+                (self.root / 'CURRENT').write_text(old1)
+            return real_rmtree(path, *args, **kwargs)
+
+        retention_module.shutil.rmtree = flipping
+        try:
+            summary = cleanup_index_root(self.root, keep=1, grace_seconds=0, build_stale_hours=0)
+        finally:
+            retention_module.shutil.rmtree = real_rmtree
+        self.assertTrue((self.root / old1).exists())
+        self.assertIn(old1, summary['kept'])
+        self.assertNotIn(old1, summary['removed'])
+
+    def test_live_build_lock_skips_build_pruning(self):
+        stale = self.root / 'build-active01'
+        stale.mkdir()
+        old = time.time() - 100000
+        os.utime(stale, (old, old))
+        current = self.make_gen('c', age=0)
+        self.publish(current)
+        (self.root / 'build.lock').write_text(str(os.getpid()))
+        summary = cleanup_index_root(self.root, keep=3, grace_seconds=3600, build_stale_hours=24)
+        self.assertTrue(summary['builds_skipped'])
+        self.assertTrue(stale.exists())
+
+    def test_own_lifecycle_lock_still_prunes_stale_builds(self):
+        stale = self.root / 'build-abcdef12'
+        stale.mkdir()
+        old = time.time() - 100000
+        os.utime(stale, (old, old))
+        current = self.make_gen('c', age=0)
+        self.publish(current)
+        (self.root / 'build.lock').write_text(str(os.getpid()))
+        summary = cleanup_index_root(self.root, keep=3, grace_seconds=3600,
+                                     build_stale_hours=24, own_pid=os.getpid())
+        self.assertFalse(summary['builds_skipped'])
+        self.assertEqual(summary['stale_builds_removed'], 1)
+        self.assertFalse(stale.exists())
 
     def test_incremental_publish_still_correct_with_cleanup_active(self):
         settings = Settings(preprocessing_mode='original', legacy_embed=False)

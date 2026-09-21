@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Services\IndexRetention;
 use App\Services\VisualIndexBuilder;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 
 class CleanupVisualIndex extends Command
 {
@@ -13,6 +14,31 @@ class CleanupVisualIndex extends Command
     protected $description = 'Inspect and prune superseded FAISS generations, stale build dirs, and old private index workspaces';
 
     public function handle(VisualIndexBuilder $builder): int
+    {
+        $dryRun = (bool) $this->option('dry-run');
+        // Destructive cleanup holds the SAME single-writer lock as indexing
+        // for the whole plan + delete operation, so a concurrent incremental
+        // append or full rebuild can never interleave with our deletions.
+        // Dry-run modifies nothing and needs no lock.
+        $lock = Cache::lock('visual-index-build', 86400);
+        if (! $dryRun && ! $lock->get()) {
+            $this->error('Another build or cleanup is running; aborting without deleting anything.');
+
+            return self::FAILURE;
+        }
+        try {
+            return $this->runCleanup($builder, $dryRun);
+        } finally {
+            if (! $dryRun) {
+                try {
+                    $lock->release();
+                } catch (\Throwable) {
+                }
+            }
+        }
+    }
+
+    private function runCleanup(VisualIndexBuilder $builder, bool $dryRun): int
     {
         $root = (string) config('retrieval.index_path');
         $plan = IndexRetention::plan($root,
@@ -62,7 +88,7 @@ class CleanupVisualIndex extends Command
         $this->newLine();
         $this->line('Estimated reclaimable: '.round($reclaimable, 1).' MB');
 
-        if ($this->option('dry-run')) {
+        if ($dryRun) {
             $this->info('Dry-run: nothing was modified.');
 
             return self::SUCCESS;
@@ -77,8 +103,25 @@ class CleanupVisualIndex extends Command
 
             return self::SUCCESS;
         }
+        // Re-plan under the lock and intersect: never execute a stale plan
+        // if CURRENT moved (or grace elapsed into eligibility) meanwhile.
+        // removePlanned() additionally re-checks CURRENT, naming, symlinks,
+        // and location for every single target.
+        $fresh = IndexRetention::plan($root,
+            (int) config('retrieval.index_generations_keep', 3),
+            (int) config('retrieval.index_generation_grace_seconds', 3600),
+            (int) config('retrieval.index_build_stale_hours', 24));
+        $allowed = [];
+        foreach (array_merge($fresh['remove'], $fresh['builds']) as $row) {
+            $allowed[$row['name']] = true;
+        }
         $failures = 0;
         foreach (array_merge($plan['remove'], $plan['builds']) as $row) {
+            if (! isset($allowed[$row['name']])) {
+                $this->warn("Skipping {$row['name']}; no longer eligible.");
+
+                continue;
+            }
             if (! IndexRetention::removePlanned($root, $row['name'])) {
                 $this->warn("Could not remove {$row['name']}; left in place.");
                 $failures++;

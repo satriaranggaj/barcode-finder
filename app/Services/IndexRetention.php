@@ -58,6 +58,11 @@ final class IndexRetention
             }
         }
         usort($generations, fn ($a, $b) => $b['mtime'] <=> $a['mtime'] ?: strcmp($a['name'], $b['name']));
+        // Grace runs from supersession (persisted by the Python builder after
+        // each publication), not from creation: a generation served for days
+        // then superseded seconds ago must survive. mtime is the fallback
+        // when no supersession record exists.
+        $superseded = self::readSuperseded($root);
         $keepNames = [$current => true];
         if ($keep <= 0) {
             foreach ($generations as $generation) {
@@ -69,7 +74,11 @@ final class IndexRetention
             }
         }
         foreach ($generations as $generation) {
-            if ($now - $generation['mtime'] < $graceSeconds) {
+            $refTs = $generation['mtime'];
+            if (isset($superseded[$generation['name']]) && $superseded[$generation['name']] > $refTs) {
+                $refTs = (int) $superseded[$generation['name']];
+            }
+            if ($now - $refTs < $graceSeconds) {
                 $keepNames[$generation['name']] = true;
             }
         }
@@ -113,6 +122,40 @@ final class IndexRetention
         $name = trim($content);
 
         return preg_match(self::GENERATION_PATTERN, $name) === 1 ? $name : null;
+    }
+
+    /**
+     * Persisted supersession timestamps {generation: unix_ts}, written
+     * atomically by the Python builder after each publication. Corrupt or
+     * missing state reads as empty (callers fall back to mtime).
+     */
+    public static function readSuperseded(string $root): array
+    {
+        try {
+            $content = @file_get_contents($root.DIRECTORY_SEPARATOR.'.retention.json');
+        } catch (\Throwable) {
+            return [];
+        }
+        if (! is_string($content)) {
+            return [];
+        }
+        try {
+            $data = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return [];
+        }
+        $map = is_array($data) ? ($data['superseded'] ?? null) : null;
+        if (! is_array($map)) {
+            return [];
+        }
+        $result = [];
+        foreach ($map as $name => $ts) {
+            if (is_string($name) && preg_match(self::GENERATION_PATTERN, $name) === 1 && is_numeric($ts)) {
+                $result[$name] = (int) $ts;
+            }
+        }
+
+        return $result;
     }
 
     /**

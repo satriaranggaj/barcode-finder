@@ -172,6 +172,95 @@ class CleanupVisualIndexTest extends TestCase
         }
     }
 
+    public function test_destructive_cleanup_refuses_when_lock_held(): void
+    {
+        $old = $this->gen('1', ageSeconds: 100000);
+        $current = $this->gen('2', ageSeconds: 10);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'CURRENT', $current);
+        $lock = \Illuminate\Support\Facades\Cache::lock('visual-index-build', 86400);
+        $this->assertTrue($lock->acquire());
+
+        try {
+            $this->artisan('search:cleanup-index', ['--force' => true])
+                ->assertFailed()
+                ->expectsOutputToContain('Another build or cleanup is running');
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertDirectoryExists($this->root.DIRECTORY_SEPARATOR.$old);
+        $this->assertDirectoryExists($this->root.DIRECTORY_SEPARATOR.$current);
+    }
+
+    public function test_dry_run_safe_while_lock_held(): void
+    {
+        $old = $this->gen('1', ageSeconds: 100000);
+        $current = $this->gen('2', ageSeconds: 10);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'CURRENT', $current);
+        $lock = \Illuminate\Support\Facades\Cache::lock('visual-index-build', 86400);
+        $this->assertTrue($lock->acquire());
+
+        try {
+            $this->artisan('search:cleanup-index', ['--dry-run' => true])
+                ->assertSuccessful()
+                ->expectsOutputToContain('Dry-run: nothing was modified.');
+        } finally {
+            $lock->release();
+        }
+
+        $this->assertDirectoryExists($this->root.DIRECTORY_SEPARATOR.$old);
+    }
+
+    public function test_lock_released_after_successful_cleanup(): void
+    {
+        $current = $this->gen('2', ageSeconds: 10);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'CURRENT', $current);
+
+        $this->artisan('search:cleanup-index', ['--force' => true])->assertSuccessful();
+
+        $probe = \Illuminate\Support\Facades\Cache::lock('visual-index-build', 86400);
+        $this->assertTrue($probe->acquire());
+        $probe->release();
+    }
+
+    public function test_superseded_seconds_ago_survives_grace(): void
+    {
+        config(['retrieval.index_generations_keep' => 1, 'retrieval.index_generation_grace_seconds' => 3600]);
+        $old = $this->gen('a', ageSeconds: 5 * 86400);
+        $current = $this->gen('c', ageSeconds: 10);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'CURRENT', $current);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'.retention.json',
+            json_encode(['superseded' => [$old => time()]]));
+
+        $this->artisan('search:cleanup-index', ['--force' => true])->assertSuccessful();
+
+        $this->assertDirectoryExists($this->root.DIRECTORY_SEPARATOR.$old);
+    }
+
+    public function test_superseded_long_ago_becomes_eligible(): void
+    {
+        config(['retrieval.index_generations_keep' => 1, 'retrieval.index_generation_grace_seconds' => 3600]);
+        $old = $this->gen('a', ageSeconds: 5 * 86400);
+        $current = $this->gen('c', ageSeconds: 10);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'CURRENT', $current);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'.retention.json',
+            json_encode(['superseded' => [$old => time() - 7200]]));
+
+        $this->artisan('search:cleanup-index', ['--force' => true])->assertSuccessful();
+
+        $this->assertDirectoryDoesNotExist($this->root.DIRECTORY_SEPARATOR.$old);
+        $this->assertSame($current, trim(file_get_contents($this->root.DIRECTORY_SEPARATOR.'CURRENT')));
+    }
+
+    public function test_remove_planned_never_deletes_current(): void
+    {
+        $old = $this->gen('a', ageSeconds: 100000);
+        file_put_contents($this->root.DIRECTORY_SEPARATOR.'CURRENT', $old);
+
+        $this->assertFalse(\App\Services\IndexRetention::removePlanned($this->root, $old));
+        $this->assertDirectoryExists($this->root.DIRECTORY_SEPARATOR.$old);
+    }
+
     public function test_private_workspace_retention_old_removed_recent_kept(): void
     {
         Storage::fake('local');
