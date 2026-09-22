@@ -248,13 +248,13 @@ describe('readiness state machine (pure)', () => {
 });
 
 describe('readiness controller (bound form)', () => {
-    it('foto besar: processing + button disabled; selesai: enabled', () => {
+    it('foto besar: panel processing, tombol tidak disentuh', () => {
         const { doc, form, input, button } = searchFormFixture({ files: [bigFile()] });
         const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
         expect(controller.panel.hidden).toBe(false);
-        expect(button.disabled).toBe(true);
-        expect(button.innerHTML).toContain('Menyiapkan foto…');
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
         expect(controller.state.compression).toBe('processing');
 
         input._lenskuRevision = 7;
@@ -262,7 +262,6 @@ describe('readiness controller (bound form)', () => {
         controller.state.compression = 'processing';
         emitCompression(input, 'ready', 7);
         expect(controller.state.compression).toBe('ready');
-        expect(button.disabled).toBe(true); // selection masih idle
         emitSelection(input, 'ready', 7);
         expect(button.disabled).toBe(false);
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
@@ -274,7 +273,7 @@ describe('readiness controller (bound form)', () => {
         );
     }
 
-    it('compression gagal: fallback, button tetap enabled', () => {
+    it('compression gagal: fallback di panel, tombol tidak disentuh', () => {
         const { doc, form, input, button } = searchFormFixture({ files: [bigFile()] });
         const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
@@ -291,7 +290,8 @@ describe('readiness controller (bound form)', () => {
         const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
         expect(controller.state.compression).toBe('ready');
-        expect(button.disabled).toBe(true); // menunggu selection, bukan compression
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
         input._lenskuRevision = 1;
         emitSelection(input, 'ready', 1);
         expect(button.disabled).toBe(false);
@@ -307,6 +307,7 @@ describe('readiness controller (bound form)', () => {
         expect(controller.panel.hidden).toBe(false);
         emitSelection(input, 'fallback', 5);
         expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
         const view = readinessView(controller.state);
         expect(view.note).toContain('foto penuh');
     });
@@ -323,13 +324,14 @@ describe('readiness controller (bound form)', () => {
         // Terlambat: completion A (revision 1) tiba setelah state B.
         emitCompression(input, 'ready', 1);
         expect(controller.state.compression).toBe('processing');
-        expect(button.disabled).toBe(true);
+        expect(button.disabled).toBe(false);
         emitSelection(input, 'ready', 1);
         expect(controller.state.selection).toBe('idle');
         // Completion B yang sah tetap diterapkan.
         emitCompression(input, 'ready', 2);
         emitSelection(input, 'ready', 2);
         expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
     });
 
     it('tanpa selection container: fallback, tidak stuck', () => {
@@ -337,6 +339,7 @@ describe('readiness controller (bound form)', () => {
         bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
         expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
     });
 
     it('input dikosongkan: reset + panel sembunyi', () => {
@@ -380,42 +383,47 @@ describe('production structure: container + button outside form', () => {
         );
     }
 
-    it('1. big image: processing + button disabled', () => {
+    it('1. big image: panel processing, tombol tidak disentuh', () => {
         const { doc, form, input, button } = externalFixture({ files: [bigFile()] });
-        bindSearchForm(doc, form, input);
+        const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
-        expect(button.disabled).toBe(true);
-        expect(button.innerHTML).toContain('Menyiapkan foto…');
-    });
-
-    it('2. compression ready, selection processing: belum ready', () => {
-        const { doc, form, input, button } = externalFixture({ files: [bigFile()] });
-        bindSearchForm(doc, form, input);
-        input.dispatchEvent({ type: 'change', bubbles: false });
-        input._lenskuRevision = 1;
-        emitCompression(input, 'ready', 1);
-        selectionEvent(input, 'processing', 1);
-        expect(button.disabled).toBe(true);
-    });
-
-    it('3. selection ready dari external container: enabled', () => {
-        const { doc, form, input, button, container } = externalFixture({ files: [bigFile()] });
-        bindSearchForm(doc, form, input);
-        input.dispatchEvent({ type: 'change', bubbles: false });
-        input._lenskuRevision = 1;
-        emitCompression(input, 'ready', 1);
-        selectionEvent(container, 'ready', 1);
+        expect(controller.panel.hidden).toBe(false);
+        expect(controller.state.compression).toBe('processing');
         expect(button.disabled).toBe(false);
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
     });
 
-    it('4-5. external fallback/timeout: enabled, tidak stuck', () => {
+    it('2. compression ready, selection processing: state tercatat', () => {
+        const { doc, form, input, button } = externalFixture({ files: [bigFile()] });
+        const controller = bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        input._lenskuRevision = 1;
+        emitCompression(input, 'ready', 1);
+        selectionEvent(input, 'processing', 1);
+        expect(controller.state.selection).toBe('processing');
+        expect(button.disabled).toBe(false);
+    });
+
+    it('3. selection ready dari external container: state ready', () => {
         const { doc, form, input, button, container } = externalFixture({ files: [bigFile()] });
-        bindSearchForm(doc, form, input);
+        const controller = bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        input._lenskuRevision = 1;
+        emitCompression(input, 'ready', 1);
+        selectionEvent(container, 'ready', 1);
+        expect(controller.state.selection).toBe('ready');
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+    });
+
+    it('4-5. external fallback/timeout: state fallback, tidak stuck', () => {
+        const { doc, form, input, button, container } = externalFixture({ files: [bigFile()] });
+        const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
         input._lenskuRevision = 1;
         emitCompression(input, 'ready', 1);
         selectionEvent(container, 'fallback', 1);
+        expect(controller.state.selection).toBe('fallback');
         expect(button.disabled).toBe(false);
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
     });
@@ -429,9 +437,10 @@ describe('production structure: container + button outside form', () => {
         input.dispatchEvent({ type: 'change', bubbles: false });
         selectionEvent(container, 'ready', 1);
         expect(controller.state.selection).toBe('idle');
-        expect(button.disabled).toBe(true);
+        expect(button.disabled).toBe(false);
         selectionEvent(container, 'ready', 2);
         emitCompression(input, 'ready', 2);
+        expect(controller.state.selection).toBe('ready');
         expect(button.disabled).toBe(false);
     });
 
@@ -466,18 +475,19 @@ describe('production structure: container + button outside form', () => {
             new FakeCustomEvent('lensku:selection', { bubbles: true, detail: { state: 'ready', revision: 1 } })
         );
         expect(controllerB.state.selection).toBe('idle');
-        expect(b.button.disabled).toBe(true);
-        // Button B tetap pada preparing miliknya sendiri, bukan ready dari A.
-        expect(b.button.innerHTML).toContain('Menyiapkan foto…');
-        expect(b.button.innerHTML).not.toContain('Mencari…');
-        expect(a.button.disabled).toBe(true); // compression A belum ready
+        expect(b.button.disabled).toBe(false);
+        expect(b.button.innerHTML).toBe('Cari B');
+        expect(a.button.disabled).toBe(false);
     });
 
-    it('8-9-10. preparing, ready, submitting labels', () => {
+    it('8-9-10. panel preparing, tombol asli, submitting labels', () => {
         const { doc, form, input, button } = externalFixture({ files: [bigFile()] });
-        bindSearchForm(doc, form, input);
+        const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
-        expect(button.innerHTML).toContain('Menyiapkan foto…');
+        // Panel menampilkan preparing; tombol tidak disentuh readiness.
+        expect(controller.panel.hidden).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        expect(button.innerHTML).not.toContain('Mencari…');
         input._lenskuRevision = 1;
         emitCompression(input, 'ready', 1);
         selectionEvent(input, 'ready', 1);
@@ -519,12 +529,13 @@ describe('readiness × submit interplay', () => {
 
     it('preparing vs submitting memakai label berbeda', () => {
         const { doc, form, input, button } = searchFormFixture({ files: [bigFile()] });
-        bindSearchForm(doc, form, input);
+        const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
-        expect(button.innerHTML).toContain('Menyiapkan foto…');
+        // Panel preparing terlihat; tombol tetap teks asli sampai submit.
+        expect(controller.panel.hidden).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
         expect(button.innerHTML).not.toContain('Mencari…');
         setSearchLoading(button, true);
         expect(button.innerHTML).toContain('Mencari…');
-        expect(button.innerHTML).not.toContain('Menyiapkan foto…');
     });
 });

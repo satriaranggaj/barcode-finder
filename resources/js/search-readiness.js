@@ -153,38 +153,35 @@ function buildPanel(doc) {
 
 /**
  * Bind one visual-search form (identified by its single-image input).
- * Returns a controller handle (or null when the form is not a search form).
- * Pure state transitions above stay unit-testable; this is the thin DOM glue.
+ * The controller NEVER touches the submit button: readiness is purely
+ * informational (stage panel). Button submit-loading stays fully owned by
+ * submit-loading.js, and the existing handleSearchSubmit compression gate
+ * remains the safety net for premature/programmatic submits.
  */
 export function bindSearchForm(doc, form, input) {
-    const button =
-        (typeof doc.getElementById === 'function' && doc.getElementById('home-search-submit')) ||
-        form.querySelector('[data-preview-submit]') ||
-        null;
     const built = buildPanel(doc);
     const panel = built.panel;
     panel.hidden = true;
-    if (button && button.parentNode) {
-        button.parentNode.insertBefore(panel, button);
-    } else {
-        form.appendChild(panel);
-    }
-
-    const state = createReadinessState();
-    let active = false;
-    let savedButtonHtml = null;
-
-    function saveButton() {
-        if (savedButtonHtml !== null || !button) return;
+    try {
+        const anchor =
+            (typeof doc.getElementById === 'function' && doc.getElementById('home-search-submit')) ||
+            form.querySelector('[data-preview-submit]') ||
+            null;
+        if (anchor && anchor.parentNode) {
+            anchor.parentNode.insertBefore(panel, anchor);
+        } else {
+            form.appendChild(panel);
+        }
+    } catch {
         try {
-            const current = button.innerHTML;
-            if (typeof current === 'string' && !current.includes('Menyiapkan foto…') && !current.includes('Mencari…')) {
-                savedButtonHtml = current;
-            }
+            form.appendChild(panel);
         } catch {
             /* noop */
         }
     }
+
+    const state = createReadinessState();
+    let active = false;
 
     function render() {
         const view = readinessView(state);
@@ -206,46 +203,6 @@ export function bindSearchForm(doc, form, input) {
             }
         } catch {
             /* noop */
-        }
-        if (!button) return;
-        if (!active) {
-            if (savedButtonHtml !== null) {
-                try {
-                    button.innerHTML = savedButtonHtml;
-                } catch {
-                    /* noop */
-                }
-            }
-            return;
-        }
-        if (view.ready) {
-            if (savedButtonHtml !== null) {
-                try {
-                    button.innerHTML = savedButtonHtml;
-                } catch {
-                    /* noop */
-                }
-            }
-            button.disabled = false;
-            try {
-                button.removeAttribute('aria-disabled');
-            } catch {
-                /* noop */
-            }
-        } else {
-            saveButton();
-            try {
-                button.innerHTML =
-                    '<span aria-hidden="true" class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></span> Menyiapkan foto…';
-            } catch {
-                /* noop */
-            }
-            button.disabled = true;
-            try {
-                button.setAttribute('aria-disabled', 'true');
-            } catch {
-                /* noop */
-            }
         }
     }
 
@@ -360,7 +317,7 @@ export function bindSearchForm(doc, form, input) {
         /* noop */
     }
 
-    return { state, begin, reset, render, panel, button };
+    return { state, begin, reset, render, panel };
 }
 
 /**
