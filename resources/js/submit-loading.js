@@ -1,10 +1,12 @@
 /**
- * Loading state for native-submit buttons (e.g. "Konfirmasi & cari").
+ * Submit-state helpers for the native image-search form.
  *
- * The search form submits natively (full page load while the AI runs).
- * Button handling here is intentionally minimal (disable-only guard);
- * visible loading is owned by the global search progress bar.
- * Operates on a button element directly so it is unit-testable without a DOM.
+ * The external submit button is intentionally never mutated during
+ * submission (mutating the successful submitter can cancel native POST
+ * /search in some browsers). Visible loading lives in the global search
+ * progress bar; double-submit protection uses form-dataset flags only.
+ * setSearchLoading() remains for legacy/reset paths and stays unit-testable
+ * without a DOM.
  */
 
 import { resetSearchProgress, startSearchProgress } from './search-progress';
@@ -12,15 +14,28 @@ import { resetSearchProgress, startSearchProgress } from './search-progress';
 const BUSY_CLASSES = ['opacity-70', 'cursor-wait'];
 
 /**
+ * Transient submit-state flags on the form. lenskuResubmit is the one-shot
+ * token for our own intentional requestSubmit() re-entry; searchWaiting
+ * marks a held first event; searchSubmitting marks an allowed native
+ * submission in flight. All are cleared on abort/pageshow so a retry starts
+ * fresh.
+ */
+export function clearSubmitState(form) {
+    if (!form || !form.dataset) return;
+    delete form.dataset.lenskuResubmit;
+    delete form.dataset.searchWaiting;
+    delete form.dataset.searchSubmitting;
+}
+
+/**
  * Finish a compression-gated native submit.
  *
- * Returns 'resubmitted' when the form is still valid (native submission
- * proceeds; the loading state intentionally stays on until navigation) or
- * 'aborted-invalid' when validity was lost while compression ran in the
- * background — the button is fully restored and native validation bubbles
- * shown instead of leaving a stuck loading state or double-submitting.
+ * Returns 'resubmitted' when the form is still valid (the caller proceeds to
+ * the one-shot requestSubmit) or 'aborted-invalid' when validity was lost
+ * while compression ran in the background — native validation bubbles are
+ * shown instead, with all transient state cleared for a retry.
  */
-export function finalizeGatedSubmit(form, button) {
+export function finalizeGatedSubmit(form) {
     if (!form) return 'aborted-invalid';
     let valid = true;
     try {
@@ -29,8 +44,7 @@ export function finalizeGatedSubmit(form, button) {
         valid = true;
     }
     if (!valid) {
-        delete form.dataset.lenskuResubmit;
-        setSearchLoading(button, false);
+        clearSubmitState(form);
         try {
             form.reportValidity?.();
         } catch {
@@ -44,10 +58,8 @@ export function finalizeGatedSubmit(form, button) {
     try {
         form.requestSubmit();
     } catch {
-        // requestSubmit itself failed (no submit event will follow):
-        // restore the button instead of leaving it stuck loading.
-        delete form.dataset.lenskuResubmit;
-        setSearchLoading(button, false);
+        // requestSubmit itself failed (no submit event will follow).
+        clearSubmitState(form);
         return 'aborted-invalid';
     }
     return 'resubmitted';
@@ -66,59 +78,88 @@ export function resetSearchButtons(root) {
 }
 
 /**
- * Native submit handler for the image search form. Never changes the button
- * label: on actual submission the button is only disabled (double-submit
- * guard) while the global progress bar below the navbar carries the loading
- * state. A native submit event fires strictly after browser validation
- * passes, so gating here can never leave a stuck state on an invalid form.
- * Returns 'resumed' (re-entrant post-compression submit), 'direct' (no
- * compression pending, native submission continues) or 'gated' (submission
- * held until the background compression promise settles, then finalized).
+ * Native submit handler for the image search form.
+ *
+ * HARD RULE: the external form-associated submit button is NEVER mutated
+ * here (no disabled, no label/spinner changes). Mutating the successful
+ * submitter during the submit event can cancel or alter native form
+ * submission in some browsers — that was the POST /search regression.
+ * Double-submit protection uses form-dataset state only:
+ * - searchWaiting: first event held for compression (duplicates ignored).
+ * - lenskuResubmit: one-shot token for our intentional requestSubmit().
+ * - searchSubmitting: an allowed native submission is in flight.
+ *
+ * A native submit event fires strictly after browser validation passes.
+ * Returns 'resumed' (intentional re-entry, allowed natively), 'direct' (no
+ * compression pending, allowed natively), 'gated' (held for compression) or
+ * 'duplicate' (accidental extra user submit, prevented).
  */
 export function handleSearchSubmit(form, imageInput, event, deps = {}) {
     const {
         finalize = finalizeGatedSubmit,
-        getButton = (target) =>
-            (typeof document !== 'undefined' ? document.getElementById('home-search-submit') : null) ||
-            target.querySelector('[data-preview-submit]'),
         startProgress = startSearchProgress,
         resetProgress = resetSearchProgress,
     } = deps;
-    const beginPosting = (button) => {
+    const beginPosting = () => {
         // Exactly at the point of no return: validation passed and no more
         // preparation waits remain. Progress starts once; repeats are no-ops.
-        // Started here (not only on re-entry) so progress never depends on
-        // the re-entrant submit event actually firing.
+        form.dataset.searchSubmitting = 'true';
         startProgress();
-        try {
-            if (button) button.disabled = true;
-        } catch {
-            /* noop */
-        }
     };
     if (form.dataset.lenskuResubmit === 'true') {
+        // Intentional re-entry from our own requestSubmit(): clear the
+        // one-shot token, mark posting, start progress, and RETURN WITHOUT
+        // preventDefault/requestSubmit so the browser performs POST /search.
         delete form.dataset.lenskuResubmit;
-        beginPosting(getButton(form));
+        beginPosting();
         return 'resumed';
     }
-    const button = getButton(form);
+    if (form.dataset.searchSubmitting === 'true' || form.dataset.searchWaiting === 'true') {
+        // Accidental extra user submit while one is already held or posting.
+        event.preventDefault();
+        return 'duplicate';
+    }
     if (!imageInput._lenskuCompress) {
-        beginPosting(button);
+        beginPosting();
         return 'direct';
     }
+    form.dataset.searchWaiting = 'true';
     event.preventDefault();
     Promise.resolve(imageInput._lenskuCompress)
         .catch(() => {})
         .finally(() => {
-            const outcome = finalize(form, button);
+            delete form.dataset.searchWaiting;
+            const outcome = finalize(form);
+            // On success the re-entrant handler starts progress and marks
+            // posting; starting here too would start progress twice, so only
+            // the abort path acts here (reset is a safe no-op otherwise).
             // finalize() aborts without submitting when validity was lost
             // mid-compression: never show progress for a cancelled submit.
-            // On success the re-entrant handler starts progress as well, but
-            // the singleton guard keeps it to a single timer.
-            if (outcome === 'resubmitted') beginPosting(button);
-            else resetProgress();
+            if (outcome !== 'resubmitted') resetProgress();
         });
     return 'gated';
+}
+
+/**
+ * Full reset for pageshow/bfcache: progress off, transient submit flags
+ * cleared, button restored. The next search starts completely fresh.
+ */
+export function resetSearchPage(root) {
+    resetSearchButtons(root);
+    resetSearchProgress(root);
+    try {
+        const doc = root || (typeof document !== 'undefined' ? document : null);
+        const forms = doc && typeof doc.querySelectorAll === 'function' ? doc.querySelectorAll('form') : [];
+        (forms || []).forEach((form) => {
+            try {
+                clearSubmitState(form);
+            } catch {
+                /* noop */
+            }
+        });
+    } catch {
+        /* noop */
+    }
 }
 
 export function setSearchLoading(button, loading) {

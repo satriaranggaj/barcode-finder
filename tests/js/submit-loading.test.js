@@ -3,6 +3,7 @@ import {
     finalizeGatedSubmit,
     handleSearchSubmit,
     resetSearchButtons,
+    resetSearchPage,
     setSearchLoading,
 } from '../../resources/js/submit-loading.js';
 
@@ -56,9 +57,7 @@ describe('submit-loading', () => {
         expect(() => setSearchLoading({ dataset: {} }, false)).not.toThrow();
     });
 
-    it('form valid -> resubmit tepat sekali, loading tetap aktif', () => {
-        const button = fakeButton();
-        setSearchLoading(button, true);
+    it('form valid -> resubmit tepat sekali', () => {
         const calls = [];
         const form = {
             dataset: {},
@@ -72,19 +71,15 @@ describe('submit-loading', () => {
                 calls.push(form.dataset.lenskuResubmit === 'true' ? 'submit-once' : 'submit-RACE');
             },
         };
-        expect(finalizeGatedSubmit(form, button)).toBe('resubmitted');
+        expect(finalizeGatedSubmit(form)).toBe('resubmitted');
         expect(calls).toEqual(['submit-once']);
-        expect(button.disabled).toBe(true);
-        expect(button.innerHTML).toContain('Mencari…');
     });
 
-    it('form invalid -> tidak resubmit, tombol pulih total', () => {
-        const button = fakeButton();
-        setSearchLoading(button, true);
+    it('form invalid -> tidak resubmit, state bersih untuk retry', () => {
         let reported = false;
         let submitted = false;
         const form = {
-            dataset: {},
+            dataset: { lenskuResubmit: 'true', searchWaiting: 'true', searchSubmitting: 'true' },
             checkValidity: () => false,
             reportValidity: () => {
                 reported = true;
@@ -93,24 +88,21 @@ describe('submit-loading', () => {
                 submitted = true;
             },
         };
-        expect(finalizeGatedSubmit(form, button)).toBe('aborted-invalid');
+        expect(finalizeGatedSubmit(form)).toBe('aborted-invalid');
         expect(submitted).toBe(false);
         expect(reported).toBe(true);
-        expect(button.disabled).toBe(false);
-        expect(button.innerHTML).toBe('Konfirmasi & cari →');
-        expect(button.getAttribute('aria-busy')).toBeUndefined();
-        expect(button.classList.contains('cursor-wait')).toBe(false);
+        expect(form.dataset.lenskuResubmit).toBeUndefined();
+        expect(form.dataset.searchWaiting).toBeUndefined();
+        expect(form.dataset.searchSubmitting).toBeUndefined();
     });
 
     it('tanpa form -> abort aman tanpa submit', () => {
         const requestSubmit = vi.fn();
-        expect(finalizeGatedSubmit(null, fakeButton())).toBe('aborted-invalid');
+        expect(finalizeGatedSubmit(null)).toBe('aborted-invalid');
         expect(requestSubmit).not.toHaveBeenCalled();
     });
 
-    it('requestSubmit throw -> tombol pulih, tidak stuck', () => {
-        const button = fakeButton();
-        setSearchLoading(button, true);
+    it('requestSubmit throw -> state bersih, bisa retry', () => {
         const form = {
             dataset: {},
             checkValidity: () => true,
@@ -119,10 +111,13 @@ describe('submit-loading', () => {
                 throw new Error('not connected');
             },
         };
-        expect(finalizeGatedSubmit(form, button)).toBe('aborted-invalid');
-        expect(button.disabled).toBe(false);
-        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        expect(finalizeGatedSubmit(form)).toBe('aborted-invalid');
         expect(form.dataset.lenskuResubmit).toBeUndefined();
+        // Retry berikutnya mulai dari state bersih.
+        form.checkValidity = () => true;
+        form.requestSubmit = vi.fn();
+        expect(finalizeGatedSubmit(form)).toBe('resubmitted');
+        expect(form.requestSubmit).toHaveBeenCalledTimes(1);
     });
 
     it('pageshow reset mengembalikan tombol home', () => {
@@ -136,24 +131,31 @@ describe('submit-loading', () => {
         expect(resetSearchButtons({})).toBe(false);
     });
 
-    it('handleSearchSubmit: direct tanpa compression, gated menunggu lalu sekali', async () => {
-        const button = fakeButton();
-        const directForm = { dataset: {}, checkValidity: () => true };
-        const directEvent = { preventDefault: vi.fn() };
-        const startProgress = vi.fn(() => true);
-        expect(
-            handleSearchSubmit(directForm, {}, directEvent, {
-                startProgress,
-                getButton: () => button,
-            })
-        ).toBe('direct');
-        expect(directEvent.preventDefault).not.toHaveBeenCalled();
-        // Progress dimulai tepat sekali; label tombol tidak diubah.
-        expect(startProgress).toHaveBeenCalledTimes(1);
-        expect(button.disabled).toBe(true);
-        expect(button.innerHTML).toBe('Konfirmasi & cari →');
-        expect(button.innerHTML).not.toContain('Mencari…');
+    function fakeSubmitEvent() {
+        return {
+            defaultPrevented: false,
+            preventDefault() {
+                this.defaultPrevented = true;
+            },
+        };
+    }
 
+    it('A. direct: tidak prevent, progress sekali, submitter tak tersentuh', () => {
+        const button = fakeButton();
+        const form = { dataset: {}, checkValidity: () => true };
+        const event = fakeSubmitEvent();
+        const startProgress = vi.fn(() => true);
+        expect(handleSearchSubmit(form, {}, event, { startProgress })).toBe('direct');
+        // Final event: native POST dibiarkan jalan.
+        expect(event.defaultPrevented).toBe(false);
+        expect(startProgress).toHaveBeenCalledTimes(1);
+        expect(form.dataset.searchSubmitting).toBe('true');
+        // Submit button eksternal tidak dimutasi sama sekali.
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+    });
+
+    it('B. gated: tahan, requestSubmit sekali, re-entry lolos native', async () => {
         const gatedForm = {
             dataset: {},
             checkValidity: () => true,
@@ -164,32 +166,135 @@ describe('submit-loading', () => {
         const gate = new Promise((resolve) => {
             release = resolve;
         });
-        const gatedEvent = { preventDefault: vi.fn() };
-        const startProgressGated = vi.fn(() => true);
-        expect(
-            handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, gatedEvent, {
-                getButton: () => button,
-                startProgress: startProgressGated,
-            })
-        ).toBe('gated');
-        expect(gatedEvent.preventDefault).toHaveBeenCalledTimes(1);
-        // Progress belum mulai selama preparation masih ditunggu.
-        expect(startProgressGated).not.toHaveBeenCalled();
+        const first = fakeSubmitEvent();
+        const startProgress = vi.fn(() => true);
+        expect(handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, first, { startProgress })).toBe('gated');
+        expect(first.defaultPrevented).toBe(true);
+        expect(startProgress).not.toHaveBeenCalled();
         expect(gatedForm.requestSubmit).not.toHaveBeenCalled();
+        expect(gatedForm.dataset.searchWaiting).toBe('true');
+
         release(['compressed']);
         await gate;
         await Promise.resolve();
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(gatedForm.requestSubmit).toHaveBeenCalledTimes(1);
-        // Tepat sebelum actual submission: progress sekali, tombol dikunci.
-        expect(startProgressGated).toHaveBeenCalledTimes(1);
-        expect(button.disabled).toBe(true);
-        expect(button.innerHTML).toBe('Konfirmasi & cari →');
 
-        // Event re-entrant pasca-requestSubmit kembali lebih awal.
+        // Re-entrant event: dikenali, TIDAK di-prevent, progress sekali.
+        const second = fakeSubmitEvent();
         expect(
-            handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, { preventDefault: vi.fn() }, { getButton: () => button })
+            handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, second, { startProgress })
         ).toBe('resumed');
+        expect(second.defaultPrevented).toBe(false);
+        expect(startProgress).toHaveBeenCalledTimes(1);
         expect(gatedForm.requestSubmit).toHaveBeenCalledTimes(1);
+        expect(gatedForm.dataset.lenskuResubmit).toBeUndefined();
+    });
+
+    it('C. double submit saat posting/waiting diblokir, sekali POST', async () => {
+        const gatedForm = {
+            dataset: {},
+            checkValidity: () => true,
+            reportValidity: vi.fn(),
+            requestSubmit: vi.fn(),
+        };
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        const startProgress = vi.fn(() => true);
+        const deps = { startProgress };
+        expect(handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, fakeSubmitEvent(), deps)).toBe('gated');
+        // Klik kedua saat masih menunggu kompresi: diabaikan.
+        const dup = fakeSubmitEvent();
+        expect(handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, dup, deps)).toBe('duplicate');
+        expect(dup.defaultPrevented).toBe(true);
+        release(['compressed']);
+        await gate;
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(gatedForm.requestSubmit).toHaveBeenCalledTimes(1);
+        // Re-entry intentional lolos.
+        const reentry = fakeSubmitEvent();
+        expect(handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, reentry, deps)).toBe('resumed');
+        expect(reentry.defaultPrevented).toBe(false);
+        // Klik ketiga setelah posting dimulai: diblokir.
+        const late = fakeSubmitEvent();
+        expect(handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, late, deps)).toBe('duplicate');
+        expect(late.defaultPrevented).toBe(true);
+        expect(gatedForm.requestSubmit).toHaveBeenCalledTimes(1);
+        expect(startProgress).toHaveBeenCalledTimes(1);
+    });
+
+    it('D. invalid setelah compression: tanpa submit, state bersih, bisa retry', async () => {
+        const gatedForm = {
+            dataset: {},
+            checkValidity: () => true,
+            reportValidity: vi.fn(),
+            requestSubmit: vi.fn(),
+        };
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        const resetProgress = vi.fn();
+        expect(
+            handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, fakeSubmitEvent(), { resetProgress })
+        ).toBe('gated');
+        gatedForm.checkValidity = () => false;
+        release(['compressed']);
+        await gate;
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(gatedForm.requestSubmit).not.toHaveBeenCalled();
+        expect(gatedForm.reportValidity).toHaveBeenCalledTimes(1);
+        expect(resetProgress).toHaveBeenCalledTimes(1);
+        expect(gatedForm.dataset.searchWaiting).toBeUndefined();
+        expect(gatedForm.dataset.searchSubmitting).toBeUndefined();
+        expect(gatedForm.dataset.lenskuResubmit).toBeUndefined();
+        // Retry setelah valid kembali berjalan normal.
+        gatedForm.checkValidity = () => true;
+        const retry = fakeSubmitEvent();
+        expect(handleSearchSubmit(gatedForm, {}, retry, {})).toBe('direct');
+        expect(retry.defaultPrevented).toBe(false);
+    });
+
+    it('E. pageshow mereset semua state', () => {
+        const button = fakeButton();
+        setSearchLoading(button, true);
+        const form = { dataset: { searchSubmitting: 'true', searchWaiting: 'true', lenskuResubmit: 'true' } };
+        const root = {
+            getElementById: (id) => (id === 'home-search-submit' ? button : null),
+            querySelectorAll: () => [form],
+        };
+        resetSearchPage(root);
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        expect(form.dataset.searchSubmitting).toBeUndefined();
+        expect(form.dataset.searchWaiting).toBeUndefined();
+        expect(form.dataset.lenskuResubmit).toBeUndefined();
+    });
+
+    it('production DOM: external button tidak pernah dimutasi', async () => {
+        const button = fakeButton();
+        const form = {
+            dataset: {},
+            checkValidity: () => true,
+            reportValidity: vi.fn(),
+            requestSubmit: vi.fn(),
+        };
+        let release;
+        const gate = new Promise((resolve) => {
+            release = resolve;
+        });
+        const snapshot = () => ({ disabled: button.disabled, html: button.innerHTML });
+        const before = snapshot();
+        handleSearchSubmit(form, { _lenskuCompress: gate }, fakeSubmitEvent(), {});
+        release(['x']);
+        await gate;
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        handleSearchSubmit(form, { _lenskuCompress: gate }, fakeSubmitEvent(), {});
+        expect(snapshot()).toEqual(before);
     });
 });
