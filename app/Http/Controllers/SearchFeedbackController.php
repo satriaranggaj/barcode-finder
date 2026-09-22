@@ -34,7 +34,13 @@ class SearchFeedbackController extends Controller
                 }
                 Cache::forget('search-evidence:'.$token);
 
-                return back()->withErrors(['sku' => 'Foto ini sudah dikonfirmasi; label tidak diubah otomatis.']);
+                // Never back() here: the previous page is POST-only /search,
+                // so a GET back-navigation would 405. Redirect to the safe
+                // GET product page with an informational flash instead of a
+                // red validation error; nothing new is stored.
+                return to_route('products.show', $product)->with(
+                    'success', "Foto ini sudah pernah dikonfirmasi untuk SKU {$product->sku}. Tidak ada data duplikat yang disimpan."
+                );
             }
             $nearDuplicate = $duplicate['status'] === DuplicateGuard::NEAR;
             // Fail closed before any storage write: unbounded or malformed

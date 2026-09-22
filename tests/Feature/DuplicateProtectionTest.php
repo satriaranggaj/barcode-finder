@@ -44,8 +44,44 @@ class DuplicateProtectionTest extends TestCase
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'SKU-A'])->assertRedirect();
         $retry = $this->stage($user, str_repeat('a', 64), str_repeat('f', 16));
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $retry, 'sku' => 'SKU-A'])
-            ->assertSessionHasErrors('sku');
+            ->assertRedirect(route('products.show', $product))
+            ->assertSessionHasNoErrors();
         $this->assertSame(1, SearchFeedback::count());
+    }
+
+    public function test_exact_duplicate_cleans_evidence_and_never_405s(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'SKU-A']);
+        $token = $this->stage($user, str_repeat('a', 64), str_repeat('0', 16));
+        $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'SKU-A'])->assertRedirect();
+
+        $retry = $this->stage($user, str_repeat('a', 64), str_repeat('f', 16));
+        $response = $this->actingAs($user)->post(route('search.feedback'), ['token' => $retry, 'sku' => 'SKU-A']);
+
+        // No new feedback row is stored.
+        $response->assertRedirect(route('products.show', $product));
+        $this->assertSame(1, SearchFeedback::count());
+        // Redirect target is the safe GET product page, never POST-only /search.
+        $this->assertStringNotContainsString('/search', $response->headers->get('Location'));
+        // Staged evidence is cleaned up like the normal flow.
+        $this->assertSame([], Storage::disk('local')->allFiles('search-pending'));
+        // Informational flash, not a red validation error.
+        $response->assertSessionHas('success');
+        $response->assertSessionHasNoErrors();
+        // Following the redirect lands on 200, never 405.
+        $this->actingAs($user)->get($response->headers->get('Location'))->assertOk();
+    }
+
+    public function test_non_duplicate_confirmation_still_works(): void
+    {
+        $user = User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'SKU-A']);
+        $token = $this->stage($user, str_repeat('b', 64), str_repeat('1', 16));
+        $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'SKU-A'])
+            ->assertRedirect(route('products.show', $product));
+        $this->assertSame(1, SearchFeedback::count());
+        $this->assertTrue(SearchFeedback::sole()->reference_eligible);
     }
 
     public function test_slightly_changed_image_is_stored_but_ineligible_with_reason(): void

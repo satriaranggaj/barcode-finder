@@ -109,7 +109,8 @@ class VisualWorkflowTest extends TestCase
         $this->assertSame('WRONG', $data['hard_negative_sku']);
         $this->assertSame('RIGHT', $data['positive_sku']);
         $duplicate = app(SearchEvidence::class)->stage($report, $user->id);
-        $this->post(route('search.feedback'), ['token' => $duplicate, 'sku' => 'RIGHT'])->assertSessionHasErrors('sku');
+        $this->post(route('search.feedback'), ['token' => $duplicate, 'sku' => 'RIGHT'])
+            ->assertRedirect(route('products.show', $product));
         $this->assertSame(1, SearchFeedback::count());
     }
 
