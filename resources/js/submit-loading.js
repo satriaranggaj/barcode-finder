@@ -1,11 +1,13 @@
 /**
  * Loading state for native-submit buttons (e.g. "Konfirmasi & cari").
  *
- * The search form submits natively (full page load while the AI runs), so
- * the button must visibly switch to a loading state the moment submit fires
- * and stay that way until navigation. Operates on a button element directly
- * so it is unit-testable without a DOM.
+ * The search form submits natively (full page load while the AI runs).
+ * Button handling here is intentionally minimal (disable-only guard);
+ * visible loading is owned by the global search progress bar.
+ * Operates on a button element directly so it is unit-testable without a DOM.
  */
+
+import { resetSearchProgress, startSearchProgress } from './search-progress';
 
 const BUSY_CLASSES = ['opacity-70', 'cursor-wait'];
 
@@ -64,10 +66,11 @@ export function resetSearchButtons(root) {
 }
 
 /**
- * Native submit handler for the image search form. Deliberately touches no
- * button loading state: the button submits as-is. A native submit event
- * fires strictly after browser validation passes, so gating here can never
- * leave a stuck state on an invalid form.
+ * Native submit handler for the image search form. Never changes the button
+ * label: on actual submission the button is only disabled (double-submit
+ * guard) while the global progress bar below the navbar carries the loading
+ * state. A native submit event fires strictly after browser validation
+ * passes, so gating here can never leave a stuck state on an invalid form.
  * Returns 'resumed' (re-entrant post-compression submit), 'direct' (no
  * compression pending, native submission continues) or 'gated' (submission
  * held until the background compression promise settles, then finalized).
@@ -78,18 +81,42 @@ export function handleSearchSubmit(form, imageInput, event, deps = {}) {
         getButton = (target) =>
             (typeof document !== 'undefined' ? document.getElementById('home-search-submit') : null) ||
             target.querySelector('[data-preview-submit]'),
+        startProgress = startSearchProgress,
+        resetProgress = resetSearchProgress,
     } = deps;
+    const beginPosting = (button) => {
+        // Exactly at the point of no return: validation passed and no more
+        // preparation waits remain. Progress starts once; repeats are no-ops.
+        // Started here (not only on re-entry) so progress never depends on
+        // the re-entrant submit event actually firing.
+        startProgress();
+        try {
+            if (button) button.disabled = true;
+        } catch {
+            /* noop */
+        }
+    };
     if (form.dataset.lenskuResubmit === 'true') {
         delete form.dataset.lenskuResubmit;
+        beginPosting(getButton(form));
         return 'resumed';
     }
     const button = getButton(form);
-    if (!imageInput._lenskuCompress) return 'direct';
+    if (!imageInput._lenskuCompress) {
+        beginPosting(button);
+        return 'direct';
+    }
     event.preventDefault();
     Promise.resolve(imageInput._lenskuCompress)
         .catch(() => {})
         .finally(() => {
-            finalize(form, button);
+            const outcome = finalize(form, button);
+            // finalize() aborts without submitting when validity was lost
+            // mid-compression: never show progress for a cancelled submit.
+            // On success the re-entrant handler starts progress as well, but
+            // the singleton guard keeps it to a single timer.
+            if (outcome === 'resubmitted') beginPosting(button);
+            else resetProgress();
         });
     return 'gated';
 }

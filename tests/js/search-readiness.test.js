@@ -500,7 +500,7 @@ describe('production structure: container + button outside form', () => {
         };
         handleSearchSubmit(submitForm, {}, { preventDefault: vi.fn() }, { getButton: () => button });
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
-        expect(button.disabled).toBe(false);
+        expect(button.disabled).toBe(true);
     });
 });
 
@@ -523,13 +523,14 @@ describe('readiness × submit interplay', () => {
         };
         const outcome = handleSearchSubmit(submitForm, {}, { preventDefault: vi.fn() }, { getButton: () => button });
         expect(outcome).toBe('direct');
+        // Tombol hanya dikunci (anti double submit), label tidak berubah.
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
         expect(button.innerHTML).not.toContain('Mencari…');
-        expect(button.disabled).toBe(false);
+        expect(button.disabled).toBe(true);
         expect(submitForm.requestSubmit).not.toHaveBeenCalled();
     });
 
-    it('submit tidak mengubah tombol sama sekali', () => {
+    it('submit mengunci tombol tanpa mengubah label', () => {
         const { doc, form, input, button } = searchFormFixture({ files: [bigFile()] });
         const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
@@ -546,6 +547,6 @@ describe('readiness × submit interplay', () => {
         handleSearchSubmit(submitForm, {}, { preventDefault: vi.fn() }, { getButton: () => button });
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
         expect(button.innerHTML).not.toContain('Mencari…');
-        expect(button.disabled).toBe(false);
+        expect(button.disabled).toBe(true);
     });
 });

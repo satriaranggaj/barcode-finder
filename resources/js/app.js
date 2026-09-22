@@ -1,6 +1,7 @@
 import './object-selection';
 import { compressImages, compressionNeeded } from './image-compression';
 import { handleSearchSubmit, resetSearchButtons } from './submit-loading';
+import { resetSearchProgress } from './search-progress';
 import { emitCompression, initSearchReadiness } from './search-readiness';
 
 // One photo per request bounds POST size and PHP inference time for multi-upload.
@@ -202,10 +203,12 @@ document.querySelectorAll('form').forEach((form) => {
 	});
 });
 
-// Reset tombol bila user kembali dengan tombol back (bfcache bisa
-// menampilkan state loading yang basi).
+// Reset tombol dan progress bar bila user kembali dengan tombol back
+// (bfcache bisa menampilkan state loading yang basi). Tanpa ini pencarian
+// berikutnya bisa terkunci dalam keadaan disabled/hidden yang basi.
 window.addEventListener('pageshow', () => {
 	resetSearchButtons(document);
+	resetSearchProgress(document);
 });
 
 

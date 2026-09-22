@@ -140,18 +140,19 @@ describe('submit-loading', () => {
         const button = fakeButton();
         const directForm = { dataset: {}, checkValidity: () => true };
         const directEvent = { preventDefault: vi.fn() };
-        const setLoading = vi.fn();
+        const startProgress = vi.fn(() => true);
         expect(
             handleSearchSubmit(directForm, {}, directEvent, {
-                setLoading,
+                startProgress,
                 getButton: () => button,
             })
         ).toBe('direct');
         expect(directEvent.preventDefault).not.toHaveBeenCalled();
-        // Tombol tidak diberi loading: tetap teks asli dan enabled.
-        expect(setLoading).not.toHaveBeenCalled();
-        expect(button.disabled).toBe(false);
+        // Progress dimulai tepat sekali; label tombol tidak diubah.
+        expect(startProgress).toHaveBeenCalledTimes(1);
+        expect(button.disabled).toBe(true);
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        expect(button.innerHTML).not.toContain('Mencari…');
 
         const gatedForm = {
             dataset: {},
@@ -164,21 +165,31 @@ describe('submit-loading', () => {
             release = resolve;
         });
         const gatedEvent = { preventDefault: vi.fn() };
+        const startProgressGated = vi.fn(() => true);
         expect(
-            handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, gatedEvent, { getButton: () => button })
+            handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, gatedEvent, {
+                getButton: () => button,
+                startProgress: startProgressGated,
+            })
         ).toBe('gated');
         expect(gatedEvent.preventDefault).toHaveBeenCalledTimes(1);
+        // Progress belum mulai selama preparation masih ditunggu.
+        expect(startProgressGated).not.toHaveBeenCalled();
         expect(gatedForm.requestSubmit).not.toHaveBeenCalled();
         release(['compressed']);
         await gate;
         await Promise.resolve();
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(gatedForm.requestSubmit).toHaveBeenCalledTimes(1);
+        // Tepat sebelum actual submission: progress sekali, tombol dikunci.
+        expect(startProgressGated).toHaveBeenCalledTimes(1);
+        expect(button.disabled).toBe(true);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
 
         // Event re-entrant pasca-requestSubmit kembali lebih awal.
-        expect(handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, { preventDefault: vi.fn() })).toBe(
-            'resumed'
-        );
+        expect(
+            handleSearchSubmit(gatedForm, { _lenskuCompress: gate }, { preventDefault: vi.fn() }, { getButton: () => button })
+        ).toBe('resumed');
         expect(gatedForm.requestSubmit).toHaveBeenCalledTimes(1);
     });
 });
