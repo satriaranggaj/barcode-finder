@@ -6,6 +6,7 @@ use App\Models\Product;
 use App\Models\ProductPhoto;
 use App\Services\CropCoordinates;
 use App\Services\RetrievalClient;
+use App\Services\VisualIndexLifecycle;
 use Illuminate\Console\Command;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
@@ -85,7 +86,7 @@ class BackfillSelection extends Command
                     ->update(['crop' => $crop, 'selection_source' => 'auto',
                         'selection_verified' => false, 'index_status' => $wasServed ? 'rebuild-required' : 'pending']);
                 if ($wasServed && $updated) {
-                    Cache::forever('visual-index-rebuild-required', "photo {$photo->id} selection changed; full rebuild required");
+                    app(VisualIndexLifecycle::class)->markDirty("photo {$photo->id} selection changed; full rebuild required");
                 }
                 if (! $updated) {
                     $skipped++;

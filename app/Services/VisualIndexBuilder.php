@@ -547,22 +547,54 @@ class VisualIndexBuilder
     /**
      * @return array{added:int, skipped:int, generation:?string}
      */
-    private function runBuilder(string $workspace): array
+    /**
+     * Export the authoritative full snapshot used by every full rebuild
+     * (manual command and automatic queue job share this path).
+     *
+     * @throws \RuntimeException
+     */
+    public function exportDataset(string $directory, bool $includeVerified): int
     {
+        return app(VisualReferenceExporter::class)->export($directory, $includeVerified);
+    }
+
+    /**
+     * Run the authoritative FULL build (`--rebuild`) for an exported
+     * snapshot. Verified inclusion is decided at export time; the build
+     * itself just reconstructs whatever the snapshot holds. Never touches
+     * the serving generation until the new one is verified and CURRENT
+     * flips atomically inside build_index.
+     *
+     * @param callable(string $type, string $buffer)|null $onOutput
+     *
+     * @throws \RuntimeException
+     */
+    public function rebuildFull(string $workspace, ?callable $onOutput = null): array
+    {
+        return $this->runBuilder($workspace, true, $onOutput);
+    }
+
+    private function runBuilder(string $workspace, bool $rebuild = false, ?callable $onOutput = null): array
+    {
+        $command = [config('retrieval.python'), '-B', '-m', 'app.scripts.build_index', '--dataset', $workspace];
+        if ($rebuild) {
+            $command[] = '--rebuild';
+        }
         $process = new Process(
-            [config('retrieval.python'), '-B', '-m', 'app.scripts.build_index', '--dataset', $workspace],
+            $command,
             base_path('ai-service'),
             ['FAISS_INDEX_PATH' => config('retrieval.index_path'), 'RELEVANCE_POLICY' => ''],
         );
         $process->setTimeout(null);
-        $process->run();
+        $process->run($onOutput);
         $output = trim($process->getOutput()."\n".$process->getErrorOutput());
         if (! $process->isSuccessful()) {
             // Propagate the Python reason (signature drift, changed
             // metadata, deleted refs) so the job can map rebuild-required
             // vs retriable failure instead of seeing a generic message.
             $reason = $output !== '' ? substr($output, -2000) : 'unknown error';
-            throw new \RuntimeException('Index append failed; serving generation untouched. '.$reason);
+            $operation = $rebuild ? 'Index rebuild failed' : 'Index append failed';
+            throw new \RuntimeException($operation.'; serving generation untouched. '.$reason);
         }
         // build_index prints a dict like {'added': 1, ...}; parse best-effort.
         $parsed = ['added' => 0, 'skipped' => 0, 'generation' => null];

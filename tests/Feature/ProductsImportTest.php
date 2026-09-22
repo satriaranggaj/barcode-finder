@@ -6,6 +6,7 @@ use App\Imports\ProductsImport;
 use App\Models\Product;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -14,6 +15,9 @@ class ProductsImportTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        // Import may schedule an index rebuild; never run builders here.
+        Queue::fake();
 
         config()->set('database.default', 'sqlite');
         config()->set('database.connections.sqlite.database', ':memory:');

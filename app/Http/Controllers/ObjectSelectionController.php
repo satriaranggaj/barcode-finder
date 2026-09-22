@@ -6,7 +6,6 @@ use App\Models\ProductPhoto;
 use App\Services\CropCoordinates;
 use App\Services\RetrievalClient;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -83,9 +82,9 @@ class ObjectSelectionController extends Controller
                 // a full rebuild. Never dispatch incremental for it.
                 $photo->update(['crop' => $crop, 'selection_source' => $newSource,
                     'selection_verified' => true, 'index_status' => 'rebuild-required']);
-                Cache::forever('visual-index-rebuild-required', "photo {$photo->id} crop/selection changed; full rebuild required");
+                app(\App\Services\VisualIndexLifecycle::class)->markDirty("photo {$photo->id} crop/selection changed; full rebuild required");
 
-                return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. Perubahan memerlukan full rebuild (search:build-index) agar berlaku di pencarian.');
+                return to_route('admin.products.show', $photo->product_id)->with('success', 'Area objek disimpan. AI sedang menyiapkan pembaruan index.');
             }
         } elseif ($photo->index_status === 'indexed') {
             // Identical representation on an indexed photo: the serving vector

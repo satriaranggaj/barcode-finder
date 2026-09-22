@@ -75,12 +75,21 @@ class VisualSearchCommandsTest extends TestCase
         Cache::put('visual-index-building', true, 60);
         $this->actingAs($admin)->get(route('admin.index'))
             ->assertOk()
-            ->assertSee('AI sedang memperbarui index...');
+            ->assertSee('AI sedang membangun ulang index.');
 
         Cache::forget('visual-index-building');
         Cache::forever('visual-index-rebuild-required', 'photo 1 deleted');
         $this->actingAs($admin)->get(route('admin.index'))
             ->assertOk()
-            ->assertSee('memerlukan full rebuild');
+            ->assertSee('AI sedang menyiapkan pembaruan index setelah perubahan katalog.')
+            ->assertDontSee('jalankan');
+
+        Cache::forever('visual-index-rebuild-failure', 'Index rebuild failed; out of memory.');
+        $this->actingAs($admin)->get(route('admin.index'))
+            ->assertOk()
+            ->assertSee('Automatic visual index rebuild gagal')
+            ->assertSee('Index rebuild failed; out of memory.')
+            ->assertDontSee('Traceback');
+        Cache::forget('visual-index-rebuild-failure');
     }
 }

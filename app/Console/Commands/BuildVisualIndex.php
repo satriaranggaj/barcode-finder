@@ -3,10 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Services\StoragePaths;
+use App\Services\VisualIndexBuilder;
+use App\Services\VisualIndexLifecycle;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
-use Symfony\Component\Process\Process;
 
 class BuildVisualIndex extends Command
 {
@@ -14,7 +15,7 @@ class BuildVisualIndex extends Command
 
     protected $description = 'Export a consistent reference dataset and publish a complete FAISS generation';
 
-    public function handle(): int
+    public function handle(VisualIndexBuilder $builder, VisualIndexLifecycle $lifecycle): int
     {
         $lock = Cache::lock('visual-index-build', 86400);
         if (! $lock->get()) {
@@ -24,13 +25,17 @@ class BuildVisualIndex extends Command
         }
         $dataset = Storage::disk('local')->path(app(StoragePaths::class)->indexBuild());
         try {
-            if ($this->call('products:export-visual', ['directory' => $dataset, '--include-verified' => $this->option('include-verified')]) !== 0) {
+            try {
+                $builder->exportDataset($dataset, (bool) $this->option('include-verified'));
+            } catch (\RuntimeException $error) {
+                $this->error($error->getMessage().' Dataset retained: '.$dataset);
+
                 return self::FAILURE;
             }
-            $process = new Process([config('retrieval.python'), '-B', '-m', 'app.scripts.build_index', '--dataset', $dataset, '--rebuild'], base_path('ai-service'), ['FAISS_INDEX_PATH' => config('retrieval.index_path'), 'RELEVANCE_POLICY' => '']);
-            $process->setTimeout(null); // CLI batch job; HTTP timeouts remain bounded.
-            $process->run(fn ($type, $buffer) => $this->output->write($buffer));
-            if (! $process->isSuccessful()) {
+            // Same authoritative pipeline as the automatic queue rebuild.
+            try {
+                $builder->rebuildFull($dataset, fn ($type, $buffer) => $this->output->write($buffer));
+            } catch (\RuntimeException $error) {
                 $this->error('Build failed; serving generation was not replaced. Dataset retained: '.$dataset);
 
                 return self::FAILURE;
@@ -45,7 +50,13 @@ class BuildVisualIndex extends Command
             // Feedback is healed only when this rebuild actually included
             // verified references; otherwise pending confirmations stay
             // pending for the next auto-index run.
-            app(\App\Services\VisualIndexBuilder::class)->markAllIndexed((bool) $this->option('include-verified'));
+            $builder->markAllIndexed((bool) $this->option('include-verified'));
+            if (! $lifecycle->clearDirty($lifecycle->dirtyRevision())) {
+                // A mutation landed mid-build: ensure a follow-up rebuild
+                // (no-op when one is already queued).
+                $lifecycle->ensureQueued();
+                $this->line('New changes arrived during the build; a follow-up rebuild was queued.');
+            }
 
             return self::SUCCESS;
         } finally {

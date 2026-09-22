@@ -226,6 +226,7 @@ class IndexVisualReferenceTest extends TestCase
 
     public function test_delete_indexed_marks_rebuild_required(): void
     {
+        Queue::fake();
         Storage::fake('public');
         $admin = User::factory()->create(['role' => 'admin']);
         $product = Product::create(['sku' => 'SKU123']);
@@ -252,6 +253,7 @@ class IndexVisualReferenceTest extends TestCase
 
     public function test_product_metadata_change_flags_indexed_photos(): void
     {
+        Queue::fake();
         $admin = User::factory()->create(['role' => 'admin']);
         $product = Product::create(['sku' => 'SKU123', 'description' => 'Obeng plus']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'indexed']);

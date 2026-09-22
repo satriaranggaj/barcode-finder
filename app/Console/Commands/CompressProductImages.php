@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ProductPhoto;
 use App\Services\ProductImages;
+use App\Services\VisualIndexLifecycle;
 use Illuminate\Console\Command;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
@@ -94,7 +95,7 @@ class CompressProductImages extends Command
                     $updated = ProductPhoto::whereKey($photo->id)->where('updated_at', $photo->getRawOriginal('updated_at'))->where('path', $photo->path)
                         ->update([...$stored, 'index_status' => $wasServed ? 'rebuild-required' : 'pending']);
                     if ($wasServed && $updated) {
-                        Cache::forever('visual-index-rebuild-required', "photo {$photo->id} re-encoded; full rebuild required");
+                        app(VisualIndexLifecycle::class)->markDirty("photo {$photo->id} re-encoded; full rebuild required");
                     }
                     if (! $updated) {
                         app(ProductImages::class)->discard($stored);

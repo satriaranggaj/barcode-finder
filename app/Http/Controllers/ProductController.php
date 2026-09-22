@@ -73,7 +73,8 @@ class ProductController extends Controller
             'tab' => $tab,
             'pendingReferences' => $this->pendingReferenceCount(),
             'indexBuilding' => (bool) Cache::get('visual-index-building'),
-            'indexRebuildRequired' => Cache::get('visual-index-rebuild-required'),
+            'indexRebuildRequired' => app(\App\Services\VisualIndexLifecycle::class)->dirtyReason(),
+            'indexFailure' => app(\App\Services\VisualIndexLifecycle::class)->failure(),
         ]);
     }
 
@@ -147,15 +148,13 @@ class ProductController extends Controller
         ProductAttributes::refreshFromDescription($product->fresh());
 
         // FAISS HNSW vectors are immutable: indexed references whose SKU or
-        // description changed can only be replaced by a full rebuild.
+        // description changed can only be replaced by a full rebuild, which
+        // is scheduled automatically (no manual command needed).
         // Pending photos stay pending (fresh append, no rebuild needed).
         if ($oldSku !== $newSku || $oldDescription !== $newDescription) {
-            $indexed = $product->photos()->where('index_status', 'indexed')->pluck('id');
-            if ($indexed->isNotEmpty()) {
-                ProductPhoto::whereKey($indexed)->update(['index_status' => 'rebuild-required']);
-                Cache::forever('visual-index-rebuild-required',
-                    "product {$product->id} metadata changed; full rebuild required");
-            }
+            $indexed = $product->photos()->whereIn('index_status', \App\Services\VisualIndexLifecycle::SERVED_STATUSES)->pluck('id')->all();
+            app(\App\Services\VisualIndexLifecycle::class)->invalidateServedPhotos(
+                $indexed, "product {$product->id} metadata changed; full rebuild required");
         }
 
         return to_route('admin.products.show', $product)->with('success', 'Data item berhasil diperbarui.');
@@ -262,10 +261,10 @@ class ProductController extends Controller
         app(ProductImages::class)->discardPhoto($photo);
         $photo->delete();
         // HNSW vectors cannot be removed safely: a full rebuild regenerates
-        // the generation without this reference. Pending photos never
-        // reached the index, so they need no rebuild.
+        // the generation without this reference, scheduled automatically.
+        // Pending photos never reached the index, so they need no rebuild.
         if ($wasIndexed) {
-            Cache::forever('visual-index-rebuild-required', "photo {$photo->id} deleted; full rebuild required");
+            app(\App\Services\VisualIndexLifecycle::class)->markDirty("photo {$photo->id} deleted; full rebuild required");
         }
 
         return to_route('admin.products.show', $product)->with('success', 'Foto design berhasil dihapus.');
