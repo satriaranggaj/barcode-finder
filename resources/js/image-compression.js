@@ -37,6 +37,17 @@ export function isCompressible(file) {
     return COMPRESSIBLE_TYPES.has(file.type.toLowerCase());
 }
 
+/**
+ * True when at least one file will actually go through the encoder
+ * (compressible type AND at/above the size threshold). Single source of
+ * truth so UI readiness and pipeline gating agree on "needs work".
+ */
+export function compressionNeeded(files) {
+    return [...(files || [])].some(
+        (file) => isCompressible(file) && (file?.size ?? 0) >= COMPRESSION_MIN_BYTES
+    );
+}
+
 function markOptimized(file) {
     try {
         Object.defineProperty(file, ALREADY_OPTIMIZED, { value: true, enumerable: false });

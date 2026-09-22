@@ -24,6 +24,37 @@ const SELECT_TIMEOUT_MS = 15000;
 // MIN_AUTO_COVERAGE in ai-service/app/search/service.py; keep in sync.
 const MIN_AUTO_COVERAGE = 0.15;
 
+/**
+ * Report auto-selection pipeline state for the readiness UI.
+ * Dispatched exclusively from revision-guarded points (or synchronously
+ * inside the current render), so a superseded photo's late response can
+ * never rewrite the newest photo's state. Never throws.
+ */
+function emitSelection(container, state, note) {
+    try {
+        let revision;
+        try {
+            const form = container.closest
+                ? container.closest('form')
+                : null;
+            const scope =
+                form ||
+                (container.dataset?.form && typeof document !== 'undefined'
+                    ? document.getElementById(container.dataset.form)
+                    : null);
+            const input = scope?.querySelector?.('input[name="images[]"], input[name="image"]');
+            revision = input?._lenskuRevision;
+        } catch {
+            revision = undefined;
+        }
+        container.dispatchEvent(
+            new CustomEvent('lensku:selection', { bubbles: true, detail: { state, note: note || null, revision } })
+        );
+    } catch {
+        /* observability never breaks selection */
+    }
+}
+
 function normalizeCandidates(data) {
     // Laravel returns candidates ({box, source, score}); keep the
     // legacy boxes-only shape working as a fallback. Only the best
@@ -98,16 +129,22 @@ export function initializeObjectSelections() {
 
                 if (state.touched && state.box) {
                     editor.setBox(state.box);
+                    emitSelection(container, 'ready');
                     return;
                 }
                 if (status) status.textContent = 'Mencari area objek… Anda tetap bisa menyesuaikan kotak sendiri.';
+                emitSelection(container, 'processing');
 
                 // Auto-selection runs in parallel with preview decode — never
                 // waiting for <img> load — so thin tools appear selected as
                 // soon as the backend answers.
                 const fileController = new AbortController();
                 liveControllers.push(fileController);
-                const timeout = setTimeout(() => { try { fileController.abort(); } catch { /* noop */ } }, SELECT_TIMEOUT_MS);
+                let selectExpired = false;
+                const timeout = setTimeout(() => {
+                    selectExpired = true;
+                    try { fileController.abort(); } catch { /* noop */ }
+                }, SELECT_TIMEOUT_MS);
                 const body = new FormData();
                 body.append('image', file);
                 fetch(container.dataset.selectUrl || '/object-selection', {
@@ -122,6 +159,7 @@ export function initializeObjectSelections() {
                     if (current !== revision) return;
                     if (!response.ok) {
                         if (status) status.textContent = 'Seleksi otomatis belum tersedia. Tarik kotak pada foto atau gunakan foto penuh.';
+                        emitSelection(container, 'fallback', 'Seleksi otomatis belum tersedia.');
                         return;
                     }
                     const data = await response.json();
@@ -140,11 +178,17 @@ export function initializeObjectSelections() {
                     if (usable) {
                         update(transition(state, { type: 'auto-applied', box: usable }));
                         if (imageReady) editor.setBox(state.box);
+                        emitSelection(container, 'ready');
+                    } else {
+                        emitSelection(container, 'fallback', 'Menampilkan foto penuh.');
                     }
                 }).catch((error) => {
-                    if (error?.name === 'AbortError') return;
+                    // Our own 15s timeout is a fallback (search stays allowed);
+                    // only a supersede-abort stays silent.
+                    if (error?.name === 'AbortError' && !selectExpired) return;
                     if (current !== revision) return;
                     if (status) status.textContent = 'Seleksi otomatis belum tersedia. Tarik kotak pada foto atau gunakan foto penuh.';
+                    emitSelection(container, 'fallback', 'Seleksi otomatis belum tersedia.');
                 }).finally(() => clearTimeout(timeout));
             });
         };

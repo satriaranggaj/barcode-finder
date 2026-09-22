@@ -1,6 +1,7 @@
 import './object-selection';
-import { COMPRESSION_MIN_BYTES, compressImages, isCompressible } from './image-compression';
+import { compressImages, compressionNeeded } from './image-compression';
 import { handleSearchSubmit, resetSearchButtons } from './submit-loading';
+import { emitCompression, initSearchReadiness } from './search-readiness';
 
 // One photo per request bounds POST size and PHP inference time for multi-upload.
 document.querySelectorAll('[data-upload-designs]').forEach(form => {
@@ -120,7 +121,10 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 		target._lenskuCompress = (async () => {
 			try {
 				const optimized = await compressImages(merged);
+				// Guarded terminal point: stale results return silently and
+				// never emit, so Foto A cannot rewrite Foto B's readiness.
 				if (target._lenskuRevision !== revision) return [...(target.files || [])];
+				emitCompression(target, 'ready', revision);
 				// Dedup pasca-kompresi: memilih foto galeri yang sama dua
 				// kali menghasilkan nama+ukuran output yang identik.
 				const unique = [];
@@ -137,6 +141,8 @@ document.querySelectorAll('[data-photo-source]').forEach((source) => {
 				}
 			} catch {
 				// Fallback: file original sudah terpasang, upload tetap jalan.
+				// Readiness treats fallback as satisfied, never as fatal.
+				emitCompression(target, 'fallback', revision);
 			}
 			return [...(target.files || [])];
 		})();
@@ -162,12 +168,13 @@ document.addEventListener('change', (event) => {
 		return;
 	}
 	const files = [...(input.files || [])];
-	if (!files.some((file) => isCompressible(file) && (file.size ?? 0) >= COMPRESSION_MIN_BYTES)) return;
+	if (!compressionNeeded(files)) return;
 	const revision = (input._lenskuRevision = (input._lenskuRevision || 0) + 1);
 	input._lenskuCompress = (async () => {
 		try {
 			const optimized = await compressImages(files);
 			if (input._lenskuRevision !== revision) return [...(input.files || [])];
+			emitCompression(input, 'ready', revision);
 			if (optimized.length !== files.length || optimized.some((file, index) => file !== files[index])) {
 				const dataTransfer = new DataTransfer();
 				optimized.forEach((file) => dataTransfer.items.add(file));
@@ -175,6 +182,7 @@ document.addEventListener('change', (event) => {
 			}
 		} catch {
 			// Fallback: file awal tetap terpasang.
+			emitCompression(input, 'fallback', revision);
 		}
 		return [...(input.files || [])];
 	})();
@@ -301,3 +309,7 @@ navToggle?.addEventListener('click', () => {
 		mobileNavigation.hidden = isOpen;
 	}
 });
+
+// Explicit readiness UI for visual-search preparation. Observes only:
+// never slows preview, selection, or compression, which all start first.
+initSearchReadiness();
