@@ -36,6 +36,16 @@ class RebuildVisualIndex implements ShouldQueue
 
     public int $tries = 3;
 
+    /**
+     * Hard cap for one CPU-only SigLIP2 + DINO full rebuild. The worker and
+     * queue reservation must both outlive it: run the worker with
+     * --timeout=0 (no worker kill) and set DB_QUEUE_RETRY_AFTER=7500 so the
+     * reservation (7500s) always exceeds this cap (7200s) with margin. The
+     * shared visual-index-build lock plus the dirty-revision check remain as
+     * additional protection against duplicate concurrent builds.
+     */
+    public int $timeout = 7200;
+
     public function backoff(): array
     {
         return [600, 1800, 3600];
@@ -56,7 +66,11 @@ class RebuildVisualIndex implements ShouldQueue
             if (! $lifecycle->isDirty()) {
                 return;
             }
+            // Capture the dirty revision AND the snapshot boundary BEFORE the
+            // authoritative snapshot starts (same semantics as the manual
+            // command): mid-build mutations stay dirty and get a follow-up.
             $revision = $lifecycle->dirtyRevision();
+            $snapshotAt = now();
             Cache::put('visual-index-building', true, 7200);
             try {
                 try {
@@ -68,7 +82,7 @@ class RebuildVisualIndex implements ShouldQueue
                 try {
                     $builder->exportDataset($dataset, true);
                     $builder->rebuildFull($dataset);
-                    $builder->markAllIndexed(true);
+                    $builder->markAllIndexed(true, $snapshotAt);
                     if ($lifecycle->clearDirty($revision)) {
                         $lifecycle->clearFailure();
                     } else {

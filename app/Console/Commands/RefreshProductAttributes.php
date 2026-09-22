@@ -14,6 +14,13 @@ class RefreshProductAttributes extends Command
 
     public function handle(): int
     {
+        // Deliberately no VisualIndexLifecycle hook: the visual reference
+        // export consumes trustedForExport(), which reads SOURCE_MANUAL rows
+        // only, while this command regenerates description_parser rows
+        // exclusively (manual rows and raw descriptions untouched). Running
+        // it therefore cannot change effective exported metadata, so no
+        // rebuild is ever scheduled from here. See the regression test
+        // proving trusted output stability across a refresh.
         $query = Product::query()->orderBy('id');
         if ($sku = $this->option('sku')) {
             $query->where('sku', $sku);

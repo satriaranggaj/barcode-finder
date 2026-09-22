@@ -6,8 +6,10 @@ use App\Imports\ProductsImport;
 use App\Jobs\IndexVisualReference;
 use App\Jobs\RebuildVisualIndex;
 use App\Models\Product;
+use App\Models\ProductAttribute;
 use App\Models\SearchFeedback;
 use App\Models\User;
+use App\Services\ProductAttributes;
 use App\Services\VisualIndexBuilder;
 use App\Services\VisualIndexLifecycle;
 use App\Services\VisualReferenceExporter;
@@ -37,6 +39,18 @@ class VisualIndexRebuildTest extends TestCase
     private function rebuildBuilder(): VisualIndexBuilder
     {
         return \Mockery::mock(VisualIndexBuilder::class)->makePartial();
+    }
+
+    /**
+     * Backdate a row so it unambiguously predates any snapshot boundary
+     * taken later in the test (production rows are hours/days old; without
+     * this, same-second timestamps would be conservatively excluded).
+     */
+    private function ageRow($model): void
+    {
+        $model->newQuery()->whereKey($model->getKey())->update([
+            'created_at' => now()->subHour(), 'updated_at' => now()->subHour(),
+        ]);
     }
 
     private function uploadOnePhoto(Product $product): void
@@ -266,17 +280,22 @@ class VisualIndexRebuildTest extends TestCase
         Queue::fake();
         $product = Product::create(['sku' => 'SKU123']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'rebuild-required']);
+        $this->ageRow($photo->fresh());
+        $other = $product->photos()->create(['path' => 'products/b.jpg', 'disk' => 'public', 'index_status' => 'indexed']);
+        $this->ageRow($other->fresh());
         app(VisualIndexLifecycle::class)->markDirty('photo 1 deleted; full rebuild required');
 
         $builder = $this->rebuildBuilder();
         $builder->shouldReceive('acquireLock')->once()->andReturn(true);
         $builder->shouldReceive('pruneStaleWorkspaces')->once()->andReturn(0);
-        $builder->shouldReceive('exportDataset')->once()->andReturn(1);
-        $builder->shouldReceive('rebuildFull')->once()->andReturnUsing(function () {
-            // A new mutation lands while the build is running.
-            app(VisualIndexLifecycle::class)->markDirty('photo 2 deleted; full rebuild required');
+        $builder->shouldReceive('exportDataset')->once()->andReturn(2);
+        $builder->shouldReceive('rebuildFull')->once()->andReturnUsing(function () use ($other) {
+            // A new mutation lands while the build is running, AFTER the
+            // snapshot was taken: fresh updated_at, must stay dirty.
+            $other->update(['crop' => ['x' => 0.05, 'y' => 0.05, 'width' => 0.9, 'height' => 0.9], 'index_status' => 'rebuild-required']);
+            app(VisualIndexLifecycle::class)->markDirty('photo 2 crop changed; full rebuild required');
 
-            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-x'];
+            return ['added' => 2, 'skipped' => 0, 'generation' => 'generation-x'];
         });
         $builder->shouldReceive('releaseLock')->once();
 
@@ -286,7 +305,23 @@ class VisualIndexRebuildTest extends TestCase
         // the follow-up collapses into the already-queued job).
         Queue::assertPushed(RebuildVisualIndex::class, 2);
         $this->assertGreaterThan(0, app(VisualIndexLifecycle::class)->dirtyRevision());
+        // Covered by the snapshot: reconciled. Mutated mid-build: untouched.
         $this->assertSame('indexed', $photo->fresh()->index_status);
+        $this->assertSame('rebuild-required', $other->fresh()->index_status);
+
+        // Follow-up rebuild covers the mutation: everything reconciles.
+        $this->ageRow($other->fresh());
+        $followUp = $this->rebuildBuilder();
+        $followUp->shouldReceive('acquireLock')->once()->andReturn(true);
+        $followUp->shouldReceive('pruneStaleWorkspaces')->once()->andReturn(0);
+        $followUp->shouldReceive('exportDataset')->once()->andReturn(2);
+        $followUp->shouldReceive('rebuildFull')->once()->andReturn(['added' => 0, 'skipped' => 2, 'generation' => 'generation-y']);
+        $followUp->shouldReceive('releaseLock')->once();
+
+        (new RebuildVisualIndex)->handle($followUp, app(VisualIndexLifecycle::class));
+
+        $this->assertSame('indexed', $other->fresh()->index_status);
+        $this->assertSame(0, app(VisualIndexLifecycle::class)->dirtyRevision());
     }
 
     public function test_successful_rebuild_reconciles_everything(): void
@@ -304,6 +339,9 @@ class VisualIndexRebuildTest extends TestCase
             'photo_hash' => str_repeat('a', 64), 'dhash' => str_repeat('0', 16),
             'training_status' => 'verified', 'reference_eligible' => true,
         ]);
+        $this->ageRow($photo->fresh());
+        $this->ageRow($failed->fresh());
+        $this->ageRow($feedback->fresh());
         $lifecycle = app(VisualIndexLifecycle::class);
         $lifecycle->markDirty('photo 1 deleted; full rebuild required');
         $lifecycle->failConcise('previous failure');
@@ -404,12 +442,83 @@ class VisualIndexRebuildTest extends TestCase
         $this->assertGreaterThan(0, app(VisualIndexLifecycle::class)->dirtyRevision());
     }
 
+    public function test_manual_build_captures_revision_before_snapshot(): void
+    {
+        Queue::fake();
+        Storage::fake('local');
+        Storage::fake('public');
+        $product = Product::create(['sku' => 'SKU123']);
+        $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'rebuild-required']);
+        $this->ageRow($photo->fresh());
+        $other = $product->photos()->create(['path' => 'products/b.jpg', 'disk' => 'public', 'index_status' => 'indexed']);
+        $this->ageRow($other->fresh());
+        // Revision 1 exists before the manual build starts.
+        app(VisualIndexLifecycle::class)->markDirty('photo 1 deleted; full rebuild required');
+
+        // The manual command shares the builder pipeline: mock only the
+        // export + Python steps, keep real reconciliation.
+        $builder = \Mockery::mock(VisualIndexBuilder::class)->makePartial();
+        $builder->shouldReceive('exportDataset')->once()->andReturn(2);
+        $builder->shouldReceive('rebuildFull')->once()->andReturnUsing(function () use ($other) {
+            // Mutation lands mid-build, AFTER the snapshot: revision 2.
+            $other->update(['crop' => ['x' => 0.2, 'y' => 0.2, 'width' => 0.5, 'height' => 0.5], 'index_status' => 'rebuild-required']);
+            app(VisualIndexLifecycle::class)->markDirty('photo 2 crop changed; full rebuild required');
+
+            return ['added' => 2, 'generation' => 'generation-manual'];
+        });
+        app()->instance(VisualIndexBuilder::class, $builder);
+
+        $this->artisan('search:build-index')->assertSuccessful();
+
+        $lifecycle = app(VisualIndexLifecycle::class);
+        // Revision 1 is covered, revision 2 survives with a rebuild still
+        // queued (initial + follow-up collapse into the single queued job).
+        $this->assertSame(2, $lifecycle->dirtyRevision());
+        Queue::assertPushed(RebuildVisualIndex::class, 1);
+        $this->assertSame('indexed', $photo->fresh()->index_status);
+        $this->assertSame('rebuild-required', $other->fresh()->index_status);
+    }
+
+    public function test_refresh_attributes_without_effective_change_schedules_nothing(): void
+    {
+        Queue::fake();
+        $product = Product::create(['sku' => 'SKU123', 'description' => 'Obeng Plus PH2']);
+        $product->attributes()->create(['key' => 'drive', 'value' => 'PH2', 'source' => ProductAttribute::SOURCE_MANUAL]);
+        $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'indexed']);
+        $before = ProductAttributes::trustedForExport($product->fresh());
+
+        $this->artisan('products:refresh-attributes', ['--sku' => 'SKU123'])->assertSuccessful();
+
+        $this->assertSame($before, ProductAttributes::trustedForExport($product->fresh()));
+        Queue::assertNotPushed(RebuildVisualIndex::class);
+        $this->assertSame(0, app(VisualIndexLifecycle::class)->dirtyRevision());
+        $this->assertSame('indexed', $photo->fresh()->index_status);
+    }
+
+    public function test_rebuild_job_timeout_and_retry_configuration(): void
+    {
+        $job = new RebuildVisualIndex;
+        $this->assertSame(7200, $job->timeout);
+        $this->assertSame(3, $job->tries);
+        $this->assertSame([600, 1800, 3600], $job->backoff());
+
+        // The reservation window must outlive the job cap with margin,
+        // otherwise a still-running CPU rebuild gets picked up twice.
+        config(['queue.connections.database.retry_after' => 7500]);
+        $this->assertGreaterThan($job->timeout, (int) config('queue.connections.database.retry_after'));
+
+        // The shipped example documents the production requirement.
+        $example = file_get_contents(base_path('.env.example'));
+        $this->assertStringContainsString('DB_QUEUE_RETRY_AFTER=7500', $example);
+    }
+
     public function test_manual_build_command_uses_shared_pipeline(): void
     {
         Storage::fake('local');
         Storage::fake('public');
         $product = Product::create(['sku' => 'SKU123']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'rebuild-required']);
+        $this->ageRow($photo->fresh());
 
         $exporter = \Mockery::mock(VisualReferenceExporter::class);
         $exporter->shouldReceive('export')->once()->andReturn(1);

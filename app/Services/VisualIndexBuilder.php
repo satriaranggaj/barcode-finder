@@ -266,17 +266,38 @@ class VisualIndexBuilder
     }
 
     /**
-     * Mark every photo indexed: used only after a full --rebuild generation
-     * publishes successfully (incremental appends mark their own rows).
+     * Reconcile statuses after a full --rebuild generation publishes
+     * successfully (incremental appends mark their own rows).
+     *
+     * Snapshot-aware: only rows that predate the snapshot are reconciled.
+     * A row mutated after the snapshot started (new updated_at/created_at)
+     * is NOT in the published generation, so it keeps its pending /
+     * rebuild-required status until a follow-up rebuild covers it. The
+     * comparison uses strict `<` against the snapshot second: a same-second
+     * mutation is conservatively left out (the revision protocol guarantees
+     * a follow-up rebuild heals it, since the mutation bumped the revision).
+     *
      * Feedback is healed only when the rebuild actually included verified
      * references; otherwise pending confirmations stay pending.
+     *
+     * @param \Carbon\CarbonInterface|null $snapshotAt snapshot boundary
+     *   captured BEFORE the export started; null keeps the legacy
+     *   unfiltered behavior (tests/backfill only, never production).
      */
-    public function markAllIndexed(bool $includeVerified = true): void
+    public function markAllIndexed(bool $includeVerified = true, ?\Carbon\CarbonInterface $snapshotAt = null): void
     {
-        \Illuminate\Support\Facades\DB::table('product_photos')->update(['index_status' => 'indexed']);
+        $photos = \Illuminate\Support\Facades\DB::table('product_photos')
+            ->whereIn('index_status', ['indexed', 'indexing', 'failed', 'rebuild-required', 'pending']);
+        $feedback = SearchFeedback::where('training_status', 'verified')->where('reference_eligible', true)
+            ->whereNull('indexed_at');
+        if ($snapshotAt !== null) {
+            $boundary = \Carbon\Carbon::parse($snapshotAt)->startOfSecond();
+            $photos->where('updated_at', '<', $boundary);
+            $feedback->where('created_at', '<', $boundary);
+        }
+        $photos->update(['index_status' => 'indexed']);
         if ($includeVerified) {
-            SearchFeedback::where('training_status', 'verified')->where('reference_eligible', true)
-                ->whereNull('indexed_at')->update(['indexed_at' => now()]);
+            $feedback->update(['indexed_at' => now()]);
         }
         Cache::forget('visual-index-rebuild-required');
     }

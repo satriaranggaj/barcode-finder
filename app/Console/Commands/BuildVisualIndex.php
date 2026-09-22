@@ -25,6 +25,11 @@ class BuildVisualIndex extends Command
         }
         $dataset = Storage::disk('local')->path(app(StoragePaths::class)->indexBuild());
         try {
+            // Capture the dirty revision AND the snapshot boundary BEFORE the
+            // authoritative snapshot starts: a mutation landing mid-build
+            // must never be considered covered by this generation.
+            $buildRevision = $lifecycle->dirtyRevision();
+            $snapshotAt = now();
             try {
                 $builder->exportDataset($dataset, (bool) $this->option('include-verified'));
             } catch (\RuntimeException $error) {
@@ -45,13 +50,13 @@ class BuildVisualIndex extends Command
             // Timestamp for the admin "awaiting index" nudge; failures above
             // return before this line, so it only marks successful builds.
             Cache::forever('visual-index-built-at', now()->toIso8601String());
-            // A full rebuild heals every status: appended, failed and
-            // rebuild-required rows are all current again afterwards.
+            // Reconcile only rows covered by this snapshot; mid-build
+            // mutations keep their pending/rebuild-required status.
             // Feedback is healed only when this rebuild actually included
             // verified references; otherwise pending confirmations stay
             // pending for the next auto-index run.
-            $builder->markAllIndexed((bool) $this->option('include-verified'));
-            if (! $lifecycle->clearDirty($lifecycle->dirtyRevision())) {
+            $builder->markAllIndexed((bool) $this->option('include-verified'), $snapshotAt);
+            if (! $lifecycle->clearDirty($buildRevision)) {
                 // A mutation landed mid-build: ensure a follow-up rebuild
                 // (no-op when one is already queued).
                 $lifecycle->ensureQueued();
