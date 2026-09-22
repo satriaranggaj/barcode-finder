@@ -17,7 +17,7 @@
 </head>
 <body class="min-h-screen bg-[#fff8d6] text-[#543019] antialiased">
     <div class="min-h-screen">
-        <header class="sticky top-0 z-20 border-b border-[#ead9b8] bg-[#fffdf4]/95 px-5 py-4 backdrop-blur lg:px-10">
+        <header class="sticky top-0 left-0 right-0 z-50 border-b border-[#ead9b8] bg-[#fffdf4]/95 px-5 py-4 backdrop-blur lg:px-10">
             <div class="mx-auto flex max-w-[1400px] items-center justify-between gap-6">
                 <a href="{{ route('products.index') }}" class="flex shrink-0 items-center gap-3">
                     <img src="{{ asset('favicon_io/android-chrome-192x192.png') }}" alt="Lensku" class="h-10 w-10 rounded-xl object-cover">
@@ -66,7 +66,7 @@
         {{-- Global visual-search progress: hidden until an actual POST /search
             is about to be sent. Structural placement (never offsets) keeps it
             glued below the navbar on every breakpoint. --}}
-        <div data-search-progress hidden role="progressbar" aria-label="Pencarian produk sedang berlangsung" class="relative z-30 h-[3px] w-full overflow-hidden bg-[#eadfca]/60">
+        <div data-search-progress hidden role="progressbar" aria-label="Pencarian produk sedang berlangsung" class="fixed z-30 h-[3px] w-full overflow-hidden bg-[#eadfca]/60">
             <div data-search-progress-bar class="h-full w-full origin-left bg-[#543019]" style="transform: scaleX(0);"></div>
         </div>
 
