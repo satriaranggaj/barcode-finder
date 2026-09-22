@@ -249,12 +249,47 @@ export function bindSearchForm(doc, form, input) {
         }
     }
 
-    function hasSelectionContainer() {
+    /**
+     * Object-selection containers bound to this form, wherever they live in
+     * the DOM: descendants of the form, or external containers linked via
+     * data-form="...". Production places the component OUTSIDE the form, so
+     * form-level bubbling alone would never deliver its lifecycle events.
+     */
+    function associatedSelectionContainers() {
+        const found = [];
+        let formId = null;
         try {
-            return !!form.querySelector('[data-object-selection]');
+            formId = typeof form.getAttribute === 'function' ? form.getAttribute('id') : null;
         } catch {
-            return false;
+            formId = null;
         }
+        let all = [];
+        try {
+            all = typeof doc.querySelectorAll === 'function' ? [...doc.querySelectorAll('[data-object-selection]')] : [];
+        } catch {
+            all = [];
+        }
+        all.forEach((container) => {
+            if (!container || found.includes(container)) return;
+            let inside = false;
+            try {
+                inside = typeof container.closest === 'function' && container.closest('form') === form;
+            } catch {
+                inside = false;
+            }
+            let linked = false;
+            try {
+                linked = !!formId && !!container.dataset && container.dataset.form === formId;
+            } catch {
+                linked = false;
+            }
+            if (inside || linked) found.push(container);
+        });
+        return found;
+    }
+
+    function hasSelectionContainer() {
+        return associatedSelectionContainers().length > 0;
     }
 
     function begin() {
@@ -308,7 +343,19 @@ export function bindSearchForm(doc, form, input) {
     try {
         input.addEventListener('change', onInputChange);
         form.addEventListener('lensku:compression', onCompression);
+        // Selection events are bound BOTH on the form (covers in-form
+        // containers via bubbling) AND directly on each associated external
+        // container (whose bubble path never reaches this form). Applying
+        // the same event twice is idempotent, and cross-form events can
+        // never arrive here because neither path crosses form boundaries.
         form.addEventListener('lensku:selection', onSelection);
+        associatedSelectionContainers().forEach((container) => {
+            try {
+                container.addEventListener('lensku:selection', onSelection);
+            } catch {
+                /* noop */
+            }
+        });
     } catch {
         /* noop */
     }

@@ -119,7 +119,13 @@ function fakeElement(tag = 'div', attrs = {}) {
             walk(element);
             return found;
         },
-        closest() {
+        closest(selector) {
+            const tag = String(selector).toLowerCase();
+            let node = element.parent;
+            while (node) {
+                if (node.tag === tag) return node;
+                node = node.parent;
+            }
             return null;
         },
     };
@@ -128,13 +134,25 @@ function fakeElement(tag = 'div', attrs = {}) {
 
 function fakeDocument() {
     const byId = {};
-    return {
+    const roots = [];
+    const doc = {
         createElement: (tag) => fakeElement(tag),
         getElementById: (id) => byId[id] || null,
+        querySelectorAll: (selector) => {
+            const found = [];
+            roots.forEach((root) => {
+                root.querySelectorAll(selector).forEach((node) => found.push(node));
+            });
+            return found;
+        },
         __register: (id, element) => {
             byId[id] = element;
         },
+        __mount: (element) => {
+            roots.push(element);
+        },
     };
+    return doc;
 }
 
 class FakeCustomEvent {
@@ -173,6 +191,7 @@ function searchFormFixture({ withSelection = true, files = [] } = {}) {
         form.appendChild(container);
     }
     form.appendChild(button);
+    doc.__mount(form);
     return { doc, form, input, button, container };
 }
 
@@ -329,6 +348,148 @@ describe('readiness controller (bound form)', () => {
         input.dispatchEvent({ type: 'change', bubbles: false });
         expect(controller.panel.hidden).toBe(true);
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
+    });
+});
+
+describe('production structure: container + button outside form', () => {
+    function externalFixture({ files = [], formId = 'home-image-search-form' } = {}) {
+        const doc = fakeDocument();
+        const wrap = fakeElement('div');
+        const container = fakeElement('div', { dataset: { form: formId } });
+        container.attrs['data-object-selection'] = '';
+        const button = fakeElement('button', { html: 'Konfirmasi & cari →' });
+        doc.__register('home-search-submit', button);
+        const form = fakeElement('form', { attrs: { id: formId } });
+        const input = fakeElement('input', {
+            dataset: {},
+            attrs: { name: 'image', 'data-image-preview': '' },
+        });
+        input.files = files;
+        input.form = form;
+        form.appendChild(input);
+        wrap.appendChild(container);
+        wrap.appendChild(button);
+        wrap.appendChild(form);
+        doc.__mount(wrap);
+        return { doc, form, input, button, container };
+    }
+
+    function selectionEvent(container, state, revision) {
+        container.dispatchEvent(
+            new FakeCustomEvent('lensku:selection', { bubbles: true, detail: { state, revision } })
+        );
+    }
+
+    it('1. big image: processing + button disabled', () => {
+        const { doc, form, input, button } = externalFixture({ files: [bigFile()] });
+        bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        expect(button.disabled).toBe(true);
+        expect(button.innerHTML).toContain('Menyiapkan foto…');
+    });
+
+    it('2. compression ready, selection processing: belum ready', () => {
+        const { doc, form, input, button } = externalFixture({ files: [bigFile()] });
+        bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        input._lenskuRevision = 1;
+        emitCompression(input, 'ready', 1);
+        selectionEvent(input, 'processing', 1);
+        expect(button.disabled).toBe(true);
+    });
+
+    it('3. selection ready dari external container: enabled', () => {
+        const { doc, form, input, button, container } = externalFixture({ files: [bigFile()] });
+        bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        input._lenskuRevision = 1;
+        emitCompression(input, 'ready', 1);
+        selectionEvent(container, 'ready', 1);
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+    });
+
+    it('4-5. external fallback/timeout: enabled, tidak stuck', () => {
+        const { doc, form, input, button, container } = externalFixture({ files: [bigFile()] });
+        bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        input._lenskuRevision = 1;
+        emitCompression(input, 'ready', 1);
+        selectionEvent(container, 'fallback', 1);
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+    });
+
+    it('6. stale event A dari external container diabaikan setelah ganti B', () => {
+        const { doc, form, input, button, container } = externalFixture({ files: [bigFile('a.jpg')] });
+        const controller = bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        input.files = [bigFile('b.jpg')];
+        input._lenskuRevision = 2;
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        selectionEvent(container, 'ready', 1);
+        expect(controller.state.selection).toBe('idle');
+        expect(button.disabled).toBe(true);
+        selectionEvent(container, 'ready', 2);
+        emitCompression(input, 'ready', 2);
+        expect(button.disabled).toBe(false);
+    });
+
+    it('7. dua search form: event container A tidak mengubah B', () => {
+        const doc = fakeDocument();
+        const build = (formId, file, label) => {
+            const wrap = fakeElement('div');
+            const container = fakeElement('div', { dataset: { form: formId } });
+            container.attrs['data-object-selection'] = '';
+            const form = fakeElement('form', { attrs: { id: formId } });
+            const input = fakeElement('input', { attrs: { name: 'image', 'data-image-preview': '' } });
+            input.files = [file];
+            input.form = form;
+            const button = fakeElement('button', { html: label });
+            button.attrs['data-preview-submit'] = '';
+            form.appendChild(input);
+            form.appendChild(button);
+            wrap.appendChild(container);
+            wrap.appendChild(form);
+            doc.__mount(wrap);
+            return { form, input, button, container };
+        };
+        const a = build('form-a', bigFile('a.jpg'), 'Cari A');
+        const b = build('form-b', bigFile('b.jpg'), 'Cari B');
+        const controllerB = bindSearchForm(doc, b.form, b.input);
+        bindSearchForm(doc, a.form, a.input);
+        a.input.dispatchEvent({ type: 'change', bubbles: false });
+        b.input.dispatchEvent({ type: 'change', bubbles: false });
+        a.input._lenskuRevision = 1;
+        b.input._lenskuRevision = 1;
+        a.container.dispatchEvent(
+            new FakeCustomEvent('lensku:selection', { bubbles: true, detail: { state: 'ready', revision: 1 } })
+        );
+        expect(controllerB.state.selection).toBe('idle');
+        expect(b.button.disabled).toBe(true);
+        // Button B tetap pada preparing miliknya sendiri, bukan ready dari A.
+        expect(b.button.innerHTML).toContain('Menyiapkan foto…');
+        expect(b.button.innerHTML).not.toContain('Mencari…');
+        expect(a.button.disabled).toBe(true); // compression A belum ready
+    });
+
+    it('8-9-10. preparing, ready, submitting labels', () => {
+        const { doc, form, input, button } = externalFixture({ files: [bigFile()] });
+        bindSearchForm(doc, form, input);
+        input.dispatchEvent({ type: 'change', bubbles: false });
+        expect(button.innerHTML).toContain('Menyiapkan foto…');
+        input._lenskuRevision = 1;
+        emitCompression(input, 'ready', 1);
+        selectionEvent(input, 'ready', 1);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        const submitForm = {
+            dataset: {},
+            checkValidity: () => true,
+            reportValidity: vi.fn(),
+            requestSubmit: vi.fn(),
+        };
+        handleSearchSubmit(submitForm, {}, { preventDefault: vi.fn() }, { getButton: () => button });
+        expect(button.innerHTML).toContain('Mencari…');
     });
 });
 
