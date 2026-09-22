@@ -64,16 +64,16 @@ export function resetSearchButtons(root) {
 }
 
 /**
- * Native submit handler for the image search form. Loading activates only
- * here: a native submit event fires strictly after browser validation
- * passes, so an invalid form can never leave a stuck loading state.
+ * Native submit handler for the image search form. Deliberately touches no
+ * button loading state: the button submits as-is. A native submit event
+ * fires strictly after browser validation passes, so gating here can never
+ * leave a stuck state on an invalid form.
  * Returns 'resumed' (re-entrant post-compression submit), 'direct' (no
  * compression pending, native submission continues) or 'gated' (submission
  * held until the background compression promise settles, then finalized).
  */
 export function handleSearchSubmit(form, imageInput, event, deps = {}) {
     const {
-        setLoading = setSearchLoading,
         finalize = finalizeGatedSubmit,
         getButton = (target) =>
             (typeof document !== 'undefined' ? document.getElementById('home-search-submit') : null) ||
@@ -84,7 +84,6 @@ export function handleSearchSubmit(form, imageInput, event, deps = {}) {
         return 'resumed';
     }
     const button = getButton(form);
-    setLoading(button, true);
     if (!imageInput._lenskuCompress) return 'direct';
     event.preventDefault();
     Promise.resolve(imageInput._lenskuCompress)

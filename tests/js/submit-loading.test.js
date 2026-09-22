@@ -140,14 +140,18 @@ describe('submit-loading', () => {
         const button = fakeButton();
         const directForm = { dataset: {}, checkValidity: () => true };
         const directEvent = { preventDefault: vi.fn() };
+        const setLoading = vi.fn();
         expect(
             handleSearchSubmit(directForm, {}, directEvent, {
-                setLoading: (element, active) => setSearchLoading(element, active),
+                setLoading,
                 getButton: () => button,
             })
         ).toBe('direct');
         expect(directEvent.preventDefault).not.toHaveBeenCalled();
-        expect(button.disabled).toBe(true);
+        // Tombol tidak diberi loading: tetap teks asli dan enabled.
+        expect(setLoading).not.toHaveBeenCalled();
+        expect(button.disabled).toBe(false);
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
 
         const gatedForm = {
             dataset: {},

@@ -499,12 +499,13 @@ describe('production structure: container + button outside form', () => {
             requestSubmit: vi.fn(),
         };
         handleSearchSubmit(submitForm, {}, { preventDefault: vi.fn() }, { getButton: () => button });
-        expect(button.innerHTML).toContain('Mencari…');
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        expect(button.disabled).toBe(false);
     });
 });
 
 describe('readiness × submit interplay', () => {
-    it('siap lalu submit: "Mencari…" (direct, sekali)', () => {
+    it('siap lalu submit: tanpa loading tombol (direct, sekali)', () => {
         const { doc, form, input, button } = searchFormFixture({ files: [tinyFile()] });
         bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
@@ -522,12 +523,13 @@ describe('readiness × submit interplay', () => {
         };
         const outcome = handleSearchSubmit(submitForm, {}, { preventDefault: vi.fn() }, { getButton: () => button });
         expect(outcome).toBe('direct');
-        expect(button.innerHTML).toContain('Mencari…');
-        expect(button.innerHTML).not.toContain('Menyiapkan foto…');
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        expect(button.innerHTML).not.toContain('Mencari…');
+        expect(button.disabled).toBe(false);
         expect(submitForm.requestSubmit).not.toHaveBeenCalled();
     });
 
-    it('preparing vs submitting memakai label berbeda', () => {
+    it('submit tidak mengubah tombol sama sekali', () => {
         const { doc, form, input, button } = searchFormFixture({ files: [bigFile()] });
         const controller = bindSearchForm(doc, form, input);
         input.dispatchEvent({ type: 'change', bubbles: false });
@@ -535,7 +537,15 @@ describe('readiness × submit interplay', () => {
         expect(controller.panel.hidden).toBe(false);
         expect(button.innerHTML).toBe('Konfirmasi & cari →');
         expect(button.innerHTML).not.toContain('Mencari…');
-        setSearchLoading(button, true);
-        expect(button.innerHTML).toContain('Mencari…');
+        const submitForm = {
+            dataset: {},
+            checkValidity: () => true,
+            reportValidity: vi.fn(),
+            requestSubmit: vi.fn(),
+        };
+        handleSearchSubmit(submitForm, {}, { preventDefault: vi.fn() }, { getButton: () => button });
+        expect(button.innerHTML).toBe('Konfirmasi & cari →');
+        expect(button.innerHTML).not.toContain('Mencari…');
+        expect(button.disabled).toBe(false);
     });
 });
