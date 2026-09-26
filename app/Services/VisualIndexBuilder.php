@@ -169,6 +169,76 @@ class VisualIndexBuilder
     }
 
     /**
+     * Deterministic identity of the exact reference state an AI build
+     * consumes, derived from existing data (no schema change).
+     *
+     * Covers every field writeOnePhoto()/writeOneFeedback() feeds the
+     * exporter: image identity + bytes pointer (disk/master_path/path +
+     * photo_hash), crop, selection metadata, product linkage + SKU +
+     * description + canonical trusted attributes. Fields that never reach
+     * the reference (thumbnail, verification-only flags excluded from the
+     * canonical comparison, timestamps) are deliberately excluded so
+     * unrelated touches can never block a legitimate completion.
+     */
+    private static function canonicalize(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+        if (array_is_list($value)) {
+            return array_map(self::canonicalize(...), $value);
+        }
+        ksort($value);
+        foreach ($value as $key => $entry) {
+            $value[$key] = self::canonicalize($entry);
+        }
+
+        return $value;
+    }
+
+    private static function referenceStateHash(ProductPhoto $photo): string
+    {
+        $product = $photo->product;
+        $state = [
+            'photo' => $photo->id,
+            'product' => $photo->product_id,
+            'sku' => $product?->sku,
+            'description' => $product?->description,
+            'trusted' => $product !== null ? ProductAttributes::trustedForExport($product) : [],
+            'hash' => $photo->photo_hash,
+            'crop' => self::canonicalize($photo->crop),
+            'selection' => $photo->selection_source,
+            'verified' => (int) (bool) $photo->selection_verified,
+            'source' => $photo->source,
+            'disk' => $photo->disk,
+            'master' => $photo->master_path,
+            'path' => $photo->path,
+        ];
+
+        return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    private static function feedbackStateHash(SearchFeedback $row): string
+    {
+        $product = $row->confirmedProduct;
+        $state = [
+            'feedback' => $row->id,
+            'product' => $row->confirmed_product_id,
+            'sku' => $product?->sku,
+            'confirmed_sku' => $row->confirmed_sku,
+            'description' => $product?->description,
+            'trusted' => $product !== null ? ProductAttributes::trustedForExport($product) : [],
+            'hash' => $row->photo_hash,
+            'crop' => self::canonicalize($row->crop),
+            'selection' => $row->selection_source,
+            'disk' => $row->disk,
+            'file' => $row->query_image_path,
+        ];
+
+        return hash('sha256', json_encode($state, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
      * Coalesced incremental append: drain every pending photo + unindexed
      * eligible feedback into ONE private workspace and ONE builder run, then
      * publish ONE new generation. Ten simultaneous uploads therefore produce
@@ -177,12 +247,18 @@ class VisualIndexBuilder
      * Idempotent: image_id dedup inside build_index skips already-present
      * references, so re-running publishes an equivalent generation at most.
      *
-     * Concurrency: completion is CAS-guarded on (id, index_status,
-     * updated_at). A mutation landing mid-build (crop/SKU/description/bytes
-     * edit → `rebuild-required`, or a stale-controller reset → `pending`)
-     * changes status and/or bumps updated_at, so the stale completion can
-     * never overwrite it: the row keeps its newer state for the full
-     * rebuild / next incremental run instead of falsely becoming `indexed`.
+     * Concurrency invariant: CLAIMED STATE == EXPORTED STATE == STATE ALLOWED
+     * TO BECOME INDEXED. Candidates are claimed, then RELOADED fresh
+     * (product + attributes included) and only that reloaded state is
+     * exported, fingerprinted, and eligible for completion. A mutation
+     * landing anywhere before the completion reload changes the fingerprint
+     * (and served mutations additionally flip status + bump the dirty
+     * revision), so the stale completion can never mark the newer state
+     * indexed: the row keeps `rebuild-required` (healed by the queued full
+     * rebuild) or `pending` (retried by the next incremental run) instead of
+     * falsely becoming `indexed`. Timestamps are intentionally NOT the
+     * identity: second-precision storage cannot separate a claim from a
+     * same-second mutation, while content cannot collide.
      *
      * @return array{added:int, skipped:int, generation:?string, photos:list<int>, feedback:list<int>}
      *
@@ -205,24 +281,39 @@ class VisualIndexBuilder
         }
 
         $photoIds = $photos->map(fn ($photo) => $photo->id)->all();
-        $claimedAt = [];
+        // Claimed reference identity: id => content fingerprint of the exact
+        // state being built. Only fingerprinted rows are exported and only
+        // fingerprint-matching rows may complete to indexed.
+        $claimedPhotoHash = [];
+        $claimedFeedbackHash = [];
         if ($photoIds !== []) {
             // Guarded transition: a row that flipped to `rebuild-required`
             // between SELECT and here (mutation won the race) must survive.
             ProductPhoto::whereKey($photoIds)
                 ->whereIn('index_status', ['pending', 'failed', 'indexing'])
                 ->update(['index_status' => 'indexing']);
-            // Claim snapshot AFTER the transition: these timestamps identify
-            // exactly the reference state being built. Re-read (instead of
-            // trusting the pre-mark models) so rows claimed by nobody — e.g.
-            // flipped to rebuild-required/pending mid-mark — are excluded
-            // from the export and keep their newer state.
-            foreach (ProductPhoto::whereKey($photoIds)->where('index_status', 'indexing')
-                ->pluck('updated_at', 'id')->all() as $id => $timestamp) {
-                $claimedAt[(int) $id] = $timestamp;
+            // RELOAD the claimed state fresh (never trust the pre-claim
+            // Eloquent instances for export): any mutation committed before
+            // this read is exported as-is with its own fingerprint, while
+            // rows that left `indexing` are excluded entirely.
+            $photos = ProductPhoto::with('product.attributes')
+                ->whereKey($photoIds)->where('index_status', 'indexing')
+                ->orderBy('id')->get()->filter(fn ($photo) => $photo->product !== null)->values();
+            foreach ($photos as $photo) {
+                $claimedPhotoHash[$photo->id] = self::referenceStateHash($photo);
             }
-            $photos = $photos->filter(fn ($photo) => isset($claimedAt[$photo->id]))->values();
-            $photoIds = array_keys($claimedAt);
+        }
+        // Same reload discipline for feedback: the exporter consumes live
+        // product metadata, so export exactly what is in the database now.
+        // (No status transition exists for feedback; indexed_at is only ever
+        // stamped at guarded completion.)
+        $feedbacks = $feedbacks->isEmpty() ? $feedbacks : SearchFeedback::with('confirmedProduct.attributes')
+            ->whereKey($feedbacks->map(fn ($row) => $row->id)->all())
+            ->where('training_status', 'verified')->where('reference_eligible', true)
+            ->whereNull('indexed_at')
+            ->orderBy('id')->get()->filter(fn ($row) => $row->confirmedProduct !== null)->values();
+        foreach ($feedbacks as $row) {
+            $claimedFeedbackHash[$row->id] = self::feedbackStateHash($row);
         }
 
         $workspace = Storage::disk('local')->path(app(StoragePaths::class)->indexBuild());
@@ -265,35 +356,53 @@ class VisualIndexBuilder
             $result = $this->runBuilder($workspace);
 
             if ($writtenPhotos !== []) {
-                // CAS completion: a row becomes `indexed` only when it still
-                // carries the exact built state (indexing + pre-build
-                // timestamp). Any mid-build mutation flips status and/or
-                // bumps updated_at, excluding the row here — it keeps
-                // `rebuild-required` (healed by the queued full rebuild via
-                // the surviving dirty revision) or `pending` (retried by the
-                // next incremental run) instead of falsely becoming indexed.
-                // Grouped by timestamp so one bounded UPDATE covers each
-                // same-second cohort; rows whose claim vanished (deleted)
-                // match nothing and are simply skipped.
-                $byStamp = [];
-                foreach ($writtenPhotos as $id) {
-                    if (! isset($claimedAt[$id])) {
+                // Fingerprint completion: reload the CURRENT state and mark
+                // indexed only rows whose content still equals the exact
+                // published state. Any mutation during the build (crop, bytes,
+                // paths, SKU, description, trusted attributes) changes the
+                // hash and excludes the row — regardless of timestamp
+                // resolution — while served mutations additionally flip
+                // status via the lifecycle. The final UPDATE re-checks status
+                // for the micro-window between this reload and the write;
+                // anything it cannot see stays pending/rebuild-required and
+                // converges via retry/rebuild, never falsely indexed.
+                // Deleted rows match nothing: never resurrected, never fatal.
+                $matching = [];
+                $current = ProductPhoto::with('product.attributes')
+                    ->whereKey($writtenPhotos)->where('index_status', 'indexing')->get();
+                foreach ($current as $model) {
+                    if ($model->product === null) {
                         continue;
                     }
-                    $stamp = $claimedAt[$id] instanceof \DateTimeInterface
-                        ? $claimedAt[$id]->format('Y-m-d H:i:s')
-                        : (string) $claimedAt[$id];
-                    $byStamp[$stamp][] = $id;
+                    if (($claimedPhotoHash[$model->id] ?? null) !== null
+                        && self::referenceStateHash($model) === $claimedPhotoHash[$model->id]) {
+                        $matching[] = $model->id;
+                    }
                 }
-                foreach ($byStamp as $stamp => $ids) {
-                    ProductPhoto::whereKey($ids)->where('index_status', 'indexing')
-                        ->where('updated_at', $stamp)->update(['index_status' => 'indexed']);
+                if ($matching !== []) {
+                    ProductPhoto::whereKey($matching)->where('index_status', 'indexing')
+                        ->update(['index_status' => 'indexed']);
                 }
             }
             if ($writtenFeedback !== []) {
-                // Redelivery guard: only still-unindexed rows are stamped, so
-                // a retried batch can never rewrite existing indexed_at marks.
-                SearchFeedback::whereKey($writtenFeedback)->whereNull('indexed_at')->update(['indexed_at' => now()]);
+                // Same ownership rule: still unindexed AND content-identical
+                // to the published reference. A retried batch can neither
+                // rewrite existing marks nor stamp a mutated reference.
+                $current = SearchFeedback::with('confirmedProduct.attributes')
+                    ->whereKey($writtenFeedback)->whereNull('indexed_at')->get();
+                $matching = [];
+                foreach ($current as $model) {
+                    if ($model->confirmedProduct === null) {
+                        continue;
+                    }
+                    if (($claimedFeedbackHash[$model->id] ?? null) !== null
+                        && self::feedbackStateHash($model) === $claimedFeedbackHash[$model->id]) {
+                        $matching[] = $model->id;
+                    }
+                }
+                if ($matching !== []) {
+                    SearchFeedback::whereKey($matching)->whereNull('indexed_at')->update(['indexed_at' => now()]);
+                }
             }
 
             return ['added' => $result['added'] ?? 0, 'skipped' => $result['skipped'] ?? 0,

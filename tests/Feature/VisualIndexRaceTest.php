@@ -12,11 +12,13 @@ use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
- * Incremental completion race safety (CAS on id + status + timestamp).
+ * Incremental race safety: CLAIMED STATE == EXPORTED STATE == STATE ALLOWED
+ * TO BECOME INDEXED (content fingerprint, never timestamps alone).
  *
- * Simulates: pending → indexing → mutation mid-build → old build completes.
- * The stale completion must never overwrite the newer mutation state.
- * The expensive Python boundary is stubbed; no model downloads.
+ * Simulates: pending → claim → reload → export → mutation mid-build → old
+ * build completes. The stale completion must never mark the newer state
+ * indexed. The expensive Python boundary is stubbed; no model downloads.
+ * Claim/reload/snapshot/completion reconciliation always run for real.
  */
 class VisualIndexRaceTest extends TestCase
 {
@@ -137,5 +139,126 @@ class VisualIndexRaceTest extends TestCase
 
         $this->assertSame(null, $result['generation']);
         $this->assertSame('rebuild-required', $photo->fresh()->index_status);
+    }
+
+    public function test_pre_claim_mutation_is_exported_as_current_and_indexed(): void
+    {
+        // An unserved-at-load writer commits V2 (staying pending, no dirty
+        // revision — exactly like the real writers). The batch must export
+        // the CURRENT database state (V2, never the stale SELECT object) and
+        // may legitimately complete it to indexed.
+        $product = Product::create(['sku' => 'RACE-STALE-OBJ']);
+        $photo = $this->storedPhoto($product, 'products/stale-obj.jpg');
+        $cropV2 = ['x' => 0.2, 'y' => 0.2, 'width' => 0.4, 'height' => 0.4];
+        \App\Models\ProductPhoto::whereKey($photo->id)->update([
+            'crop' => json_encode($cropV2), 'selection_source' => 'manual', 'selection_verified' => true,
+        ]);
+
+        $builder = $this->partialBuilder();
+        // Capture what the worker actually exported: the workspace still
+        // exists while the (stubbed) builder boundary runs.
+        $exported = null;
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function ($workspace) use ($product, $photo, &$exported) {
+            $sidecar = $workspace.DIRECTORY_SEPARATOR.$product->sku.DIRECTORY_SEPARATOR.$photo->id.'.json';
+            $exported = json_decode(file_get_contents($sidecar), true);
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-current'];
+        });
+
+        $builder->appendPending();
+
+        $this->assertSame($cropV2, $exported['crop']);
+        $this->assertSame('manual', $exported['selection_source']);
+        $this->assertSame('indexed', $photo->fresh()->index_status);
+    }
+
+    public function test_same_timestamp_mutation_is_not_marked_indexed(): void
+    {
+        // Timestamp-only CAS would collide here on second-precision storage:
+        // force the mutation to carry the exact claim timestamp while
+        // changing index-affecting content (status stays indexing, isolating
+        // the timestamp dimension). Content identity must still reject it.
+        $product = Product::create(['sku' => 'RACE-SAME-TS']);
+        $photo = $this->storedPhoto($product, 'products/same-ts.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo) {
+            $stamp = $photo->fresh()->updated_at->format('Y-m-d H:i:s');
+            \App\Models\ProductPhoto::whereKey($photo->id)->update([
+                'crop' => json_encode(['x' => 0.3, 'y' => 0.3, 'width' => 0.3, 'height' => 0.3]),
+                'updated_at' => $stamp,
+            ]);
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-same-ts'];
+        });
+
+        $builder->appendPending();
+
+        // Newer content survives as retryable indexing — never indexed.
+        $this->assertSame('indexing', $photo->fresh()->index_status);
+    }
+
+    public function test_product_description_mutation_is_not_marked_indexed(): void
+    {
+        // Product metadata is part of the exported reference. A description
+        // change on an unserved photo flips no status and bumps no revision
+        // (mirroring the real writer, which only invalidates served rows) —
+        // the stale completion must still refuse to mark it indexed.
+        $product = Product::create(['sku' => 'RACE-META', 'description' => 'Obeng plus V1']);
+        $photo = $this->storedPhoto($product, 'products/meta.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($product) {
+            $product->update(['description' => 'Obeng minus V2']);
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-meta'];
+        });
+
+        $builder->appendPending();
+
+        $this->assertSame('Obeng minus V2', $product->fresh()->description);
+        $this->assertSame('indexing', $photo->fresh()->index_status);
+    }
+
+    public function test_failure_after_mutation_keeps_rebuild_required(): void
+    {
+        Queue::fake();
+        $product = Product::create(['sku' => 'RACE-FAIL-MUT']);
+        $photo = $this->storedPhoto($product, 'products/fail-mut.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo) {
+            \App\Models\ProductPhoto::whereKey($photo->id)->update(['index_status' => 'rebuild-required']);
+            app(VisualIndexLifecycle::class)->markDirty("photo {$photo->id} crop/selection changed; full rebuild required");
+            throw new \RuntimeException('generic inference failure');
+        });
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        // The generic failure path must not downgrade rebuild-required.
+        $this->assertSame('rebuild-required', $photo->fresh()->index_status);
+        $this->assertTrue(app(VisualIndexLifecycle::class)->isDirty());
+    }
+
+    public function test_delete_during_build_never_resurrects(): void
+    {
+        $product = Product::create(['sku' => 'RACE-DEL']);
+        $photo = $this->storedPhoto($product, 'products/del.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo) {
+            $photo->forceDelete();
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-del'];
+        });
+
+        // Must not throw; completion matches zero rows.
+        $builder->appendPending();
+
+        $this->assertNull(\App\Models\ProductPhoto::find($photo->id));
     }
 }
