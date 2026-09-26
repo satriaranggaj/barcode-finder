@@ -312,12 +312,18 @@ class ProductController extends Controller
                 ));
                 $products = Product::whereIn('sku', array_column($displayRows, 'sku'))->with('photos')->get()->keyBy('sku');
                 $results = collect($displayRows)->map(function ($row) use ($products) {
-                    $product = $products->get($row['sku']);
+                    $product = is_array($row) ? $products->get($row['sku'] ?? null) : null;
                     if (! $product) {
                         return null;
                     }
-                    $photoId = pathinfo(basename($row['image_id'] ?? ''), PATHINFO_FILENAME);
-                    $photo = $product->photos->firstWhere('id', $photoId) ?? $product->photos->first();
+                    // SKU score stays the best-reference score from aggregate_skus()
+                    // (max semantics, no count bias). The card cover is the
+                    // best-scoring matched reference that resolves to a
+                    // ProductPhoto of THIS product. Verified feedback
+                    // references may win retrieval but never become covers;
+                    // only ProductPhoto assets are shown publicly.
+                    $photo = $this->resolveMatchedProductPhoto($product, is_array($row) ? $row : [])
+                        ?? $product->photos->first();
                     if (! $photo) {
                         return null;
                     }
@@ -357,6 +363,84 @@ class ProductController extends Controller
                     'sku' => (string) $row['sku'], 'score' => isset($row['score']) && is_numeric($row['score']) ? (float) $row['score'] : null,
                 ] : null, $report['ambiguity_alternatives'] ?? [])))] : null,
         ]);
+    }
+
+    /**
+     * Best-matching catalog cover for a returned SKU (request-local display only).
+     *
+     * SKU score = best matching reference score (aggregate_skus max semantics).
+     * Display cover = best-scoring matched catalog reference resolvable to a
+     * ProductPhoto of THIS product, trying winning image_id first then
+     * matched_image_ids in score order. Verified feedback references
+     * (verified-*) may affect retrieval but never become covers; only
+     * ProductPhoto rows are shown. Operates on the already eager-loaded
+     * $product->photos collection (no N+1). Returns null when nothing
+     * resolves so callers can use the normal product cover fallback.
+     */
+    private function resolveMatchedProductPhoto(Product $product, array $row): ?ProductPhoto
+    {
+        $candidates = [];
+        if (isset($row['image_id']) && is_string($row['image_id']) && $row['image_id'] !== '') {
+            $candidates[] = $row['image_id'];
+        }
+        $matched = $row['matched_image_ids'] ?? [];
+        if (is_array($matched)) {
+            foreach ($matched as $candidate) {
+                if (is_string($candidate) && $candidate !== '') {
+                    $candidates[] = $candidate;
+                }
+            }
+        }
+        // Deduplicate while preserving best-to-worst order; bounded so a
+        // malformed payload cannot force an unbounded loop.
+        $ordered = [];
+        $seen = [];
+        foreach ($candidates as $candidate) {
+            if (! isset($seen[$candidate])) {
+                $seen[$candidate] = true;
+                $ordered[] = $candidate;
+                if (count($ordered) >= 25) {
+                    break;
+                }
+            }
+        }
+        foreach ($ordered as $candidate) {
+            $photoId = self::catalogPhotoIdFromReference($candidate);
+            if ($photoId === null) {
+                continue;
+            }
+            $photo = $product->photos->firstWhere('id', $photoId);
+            // Ownership check prevents cross-product image leakage: only a
+            // photo already belonging to this product (via the eager-loaded
+            // relation) may become its cover.
+            if ($photo instanceof ProductPhoto && (int) $photo->product_id === (int) $product->id) {
+                return $photo;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Map an indexed reference id to a catalog ProductPhoto id, or null.
+     *
+     * Catalog refs are "<photoId>.<ext>" (e.g. 103.webp); feedback refs are
+     * "verified-<id>[.<ext>]". Only a basename stem that is an unambiguous
+     * numeric id resolves; verified-* and any non-numeric stem never do, so
+     * verified-123 can never be misread as photo 123.
+     */
+    private static function catalogPhotoIdFromReference(string $reference): ?int
+    {
+        $reference = trim($reference);
+        if ($reference === '') {
+            return null;
+        }
+        $stem = trim((string) pathinfo(basename($reference), PATHINFO_FILENAME));
+        if ($stem === '' || ! ctype_digit($stem)) {
+            return null;
+        }
+
+        return (int) $stem;
     }
 
     private function createEmbedding(mixed $image, ?array $crop = null): array

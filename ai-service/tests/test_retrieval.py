@@ -164,6 +164,25 @@ class RetrievalTests(unittest.TestCase):
         self.assertEqual(result[0]['score'], .9)
         self.assertEqual(result[0]['matched_images'], 2)
 
+    def test_variant_aggregation_keeps_best_reference_for_cover(self):
+        # FLOWER-001 has three variant views; the winning reference (yellow)
+        # determines both the SKU score and the card cover, while the SKU
+        # appears only once with ordered match evidence.
+        result = aggregate_skus([
+            {'sku': 'FLOWER-001', 'image_id': '101.webp', 'score': .70},
+            {'sku': 'FLOWER-001', 'image_id': '102.webp', 'score': .80},
+            {'sku': 'FLOWER-001', 'image_id': '103.webp', 'score': .95},
+            {'sku': 'OTHER', 'image_id': '201.webp', 'score': .85},
+        ])
+        self.assertEqual([x['sku'] for x in result], ['FLOWER-001', 'OTHER'])
+        winning = result[0]
+        self.assertEqual(winning['score'], .95)
+        self.assertEqual(winning['image_id'], '103.webp')
+        self.assertEqual(winning['matched_images'], 3)
+        self.assertEqual(winning['matched_image_ids'],
+                         ['103.webp', '102.webp', '101.webp'])
+        self.assertEqual(len(result), 2)
+
     def test_faiss_save_load_and_real_category_selection(self):
         self.add('001', '1')
         self.add('002', '2', (20, 200, 20), 'flowers')
