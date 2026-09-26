@@ -24,9 +24,16 @@ class VisualIndexRaceTest extends TestCase
 {
     use RefreshDatabase;
 
+    private bool $publicFakeReady = false;
+
     private function storedPhoto(Product $product, string $name): \App\Models\ProductPhoto
     {
-        Storage::fake('public');
+        // Fake once per test: re-faking would wipe previously stored files
+        // and silently turn multi-photo batches into export failures.
+        if (! $this->publicFakeReady) {
+            Storage::fake('public');
+            $this->publicFakeReady = true;
+        }
         Storage::disk('public')->put($name, 'fake-image-bytes');
         $photo = $product->photos()->create(['path' => $name, 'disk' => 'public', 'index_status' => 'pending']);
 
@@ -416,5 +423,156 @@ class VisualIndexRaceTest extends TestCase
 
         $this->assertNotNull($row->fresh()->indexed_at);
         $this->assertSame([$row->id], $result['feedback']);
+    }
+
+    private function blameError(Product $product, int $photoId): string
+    {
+        return "Index append failed; serving generation untouched. Changed image/metadata: {$product->sku}/{$photoId}.webp; use --rebuild";
+    }
+
+    private function expectRebuildRequiredThrow(VisualIndexBuilder $builder, string $message): void
+    {
+        $builder->shouldReceive('runBuilder')->once()->andThrow(new \RuntimeException($message));
+    }
+
+    public function test_blamed_mutated_photo_is_preserved_but_dirty(): void
+    {
+        // §14: worker claimed V1, newer workflow made V2/pending, then the
+        // old build blames the id. The stale worker must not flip V2, but
+        // the proven-stale generation must still schedule a rebuild.
+        Queue::fake();
+        $product = Product::create(['sku' => 'BLAME-MUT']);
+        $photo = $this->storedPhoto($product, 'products/blame-mut.jpg');
+        $cropV2 = ['x' => 0.5, 'y' => 0.5, 'width' => 0.2, 'height' => 0.2];
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo, $product, $cropV2) {
+            \App\Models\ProductPhoto::whereKey($photo->id)->update([
+                'crop' => json_encode($cropV2), 'index_status' => 'pending',
+            ]);
+            throw new \RuntimeException($this->blameError($product, $photo->id));
+        });
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        $fresh = $photo->fresh();
+        $this->assertSame('pending', $fresh->index_status);
+        $this->assertSame($cropV2, $fresh->crop);
+        $this->assertTrue(app(VisualIndexLifecycle::class)->isDirty());
+        Queue::assertPushed(RebuildVisualIndex::class);
+    }
+
+    public function test_blamed_unchanged_photo_escalates(): void
+    {
+        // §15 control: exact claimed V1 blamed → legitimately rebuild-required.
+        Queue::fake();
+        $product = Product::create(['sku' => 'BLAME-OK']);
+        $photo = $this->storedPhoto($product, 'products/blame-ok.jpg');
+
+        $builder = $this->partialBuilder();
+        $this->expectRebuildRequiredThrow($builder, $this->blameError($product, $photo->id));
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame('rebuild-required', $photo->fresh()->index_status);
+        $this->assertTrue(app(VisualIndexLifecycle::class)->isDirty());
+        Queue::assertPushed(RebuildVisualIndex::class);
+    }
+
+    public function test_non_blamed_mutated_row_is_preserved(): void
+    {
+        // §16: batch 101/102/103, blame 103, 102 becomes V2/pending mid-build.
+        // 103 → rebuild-required, 101 → failed/retryable, 102 keeps V2.
+        Queue::fake();
+        $product = Product::create(['sku' => 'BLAME-BATCH']);
+        $first = $this->storedPhoto($product, 'products/b1.jpg');
+        $second = $this->storedPhoto($product, 'products/b2.jpg');
+        $third = $this->storedPhoto($product, 'products/b3.jpg');
+        $cropV2 = ['x' => 0.1, 'y' => 0.1, 'width' => 0.3, 'height' => 0.3];
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($second, $third, $product, $cropV2) {
+            \App\Models\ProductPhoto::whereKey($second->id)->update([
+                'crop' => json_encode($cropV2), 'index_status' => 'pending',
+            ]);
+            throw new \RuntimeException($this->blameError($product, $third->id));
+        });
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame('rebuild-required', $third->fresh()->index_status);
+        $this->assertSame('failed', $first->fresh()->index_status);
+        $this->assertSame('pending', $second->fresh()->index_status);
+        $this->assertSame($cropV2, $second->fresh()->crop);
+    }
+
+    public function test_unknown_blame_reconciles_per_row(): void
+    {
+        // §17: unmappable rebuild-required error — no bulk overwrite. Owned
+        // rows escalate, newer/mutated rows survive.
+        Queue::fake();
+        $product = Product::create(['sku' => 'BLAME-UNKNOWN']);
+        $owned = $this->storedPhoto($product, 'products/u1.jpg');
+        $mutated = $this->storedPhoto($product, 'products/u2.jpg');
+        $dirty = $this->storedPhoto($product, 'products/u3.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($mutated, $dirty) {
+            \App\Models\ProductPhoto::whereKey($mutated->id)->update([
+                'crop' => json_encode(['x' => 0.2, 'y' => 0.2, 'width' => 0.2, 'height' => 0.2]),
+                'index_status' => 'pending',
+            ]);
+            \App\Models\ProductPhoto::whereKey($dirty->id)->update(['index_status' => 'rebuild-required']);
+            throw new \RuntimeException('Index append failed; pipeline/model changed; use --rebuild');
+        });
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame('rebuild-required', $owned->fresh()->index_status);
+        $this->assertSame('pending', $mutated->fresh()->index_status);
+        $this->assertSame('rebuild-required', $dirty->fresh()->index_status);
+        $this->assertTrue(app(VisualIndexLifecycle::class)->isDirty());
+    }
+
+    public function test_deleted_blamed_photo_never_resurrects(): void
+    {
+        // §18: blamed row deleted mid-build — no exception, no resurrection,
+        // global dirty still scheduled.
+        Queue::fake();
+        $product = Product::create(['sku' => 'BLAME-DEL']);
+        $photo = $this->storedPhoto($product, 'products/blame-del.jpg');
+        $photoId = $photo->id;
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo, $product, $photoId) {
+            $photo->forceDelete();
+            throw new \RuntimeException($this->blameError($product, $photoId));
+        });
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertNull(\App\Models\ProductPhoto::find($photoId));
+        $this->assertTrue(app(VisualIndexLifecycle::class)->isDirty());
+        Queue::assertPushed(RebuildVisualIndex::class);
     }
 }

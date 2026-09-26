@@ -307,6 +307,23 @@ class VisualIndexBuilder
     }
 
     /**
+     * Escalate one claimed row to rebuild-required under exact-state
+     * ownership: single atomic UPDATE ... WHERE id + indexing + claimed
+     * photo-side columns. Newer states (any status flip or content change)
+     * match zero rows and survive; deleted rows match nothing. A missing
+     * claim never transitions anything.
+     */
+    protected function escalateToRebuildRequired(int $id, ?array $claimedRaw): void
+    {
+        if ($claimedRaw === null) {
+            return;
+        }
+        $escalated = ProductPhoto::whereKey($id)->where('index_status', 'indexing');
+        self::applyPhotoStateGuard($escalated, $claimedRaw);
+        $escalated->update(['index_status' => 'rebuild-required']);
+    }
+
+    /**
      * Atomically reconcile successfully built photo references.
      *
      * Two layers, in order:
@@ -547,13 +564,31 @@ class VisualIndexBuilder
                     $blamedPhoto = null;
                 }
                 $retryable = $blamedPhoto === null ? [] : array_values(array_diff($writtenPhotos, [$blamedPhoto]));
+                // Ownership rule (same as success/generic-failure paths): a
+                // stale worker may only transition the exact state it
+                // claimed (indexing + claimed photo-side columns, one atomic
+                // statement each). A newer V2 (pending/rebuild-required/
+                // changed content) is preserved for retry/rebuild; only the
+                // global dirty lifecycle below fires unconditionally, since
+                // the builder genuinely proved the serving generation stale.
                 if ($blamedPhoto !== null) {
-                    ProductPhoto::whereKey($blamedPhoto)->update(['index_status' => 'rebuild-required']);
+                    $this->escalateToRebuildRequired($blamedPhoto, $claimedPhotoRaw[$blamedPhoto] ?? null);
                 } elseif ($writtenPhotos !== []) {
-                    ProductPhoto::whereKey($writtenPhotos)->update(['index_status' => 'rebuild-required']);
+                    // Unknown blame: no bulk overwrite — reconcile each
+                    // written row against its own claim (bounded: batch ≤ 50).
+                    foreach ($writtenPhotos as $id) {
+                        $this->escalateToRebuildRequired($id, $claimedPhotoRaw[$id] ?? null);
+                    }
                 }
                 if ($retryable !== []) {
-                    ProductPhoto::whereKey($retryable)->where('index_status', 'indexing')->update(['index_status' => 'failed']);
+                    foreach ($retryable as $id) {
+                        if (! isset($claimedPhotoRaw[$id])) {
+                            continue;
+                        }
+                        $failed = ProductPhoto::whereKey($id)->where('index_status', 'indexing');
+                        self::applyPhotoStateGuard($failed, $claimedPhotoRaw[$id]);
+                        $failed->update(['index_status' => 'failed']);
+                    }
                 }
                 // Store the TAIL: the actual ValueError sits at the end of
                 // the message (head is only INFO preamble from model load).
