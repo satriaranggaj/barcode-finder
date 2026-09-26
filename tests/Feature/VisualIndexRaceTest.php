@@ -1,0 +1,141 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Jobs\RebuildVisualIndex;
+use App\Models\Product;
+use App\Services\VisualIndexBuilder;
+use App\Services\VisualIndexLifecycle;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
+use Tests\TestCase;
+
+/**
+ * Incremental completion race safety (CAS on id + status + timestamp).
+ *
+ * Simulates: pending → indexing → mutation mid-build → old build completes.
+ * The stale completion must never overwrite the newer mutation state.
+ * The expensive Python boundary is stubbed; no model downloads.
+ */
+class VisualIndexRaceTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function storedPhoto(Product $product, string $name): \App\Models\ProductPhoto
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put($name, 'fake-image-bytes');
+        $photo = $product->photos()->create(['path' => $name, 'disk' => 'public', 'index_status' => 'pending']);
+
+        return $photo;
+    }
+
+    private function partialBuilder(): VisualIndexBuilder
+    {
+        return \Mockery::mock(VisualIndexBuilder::class)->makePartial()
+            ->shouldAllowMockingProtectedMethods();
+    }
+
+    public function test_mid_build_mutation_is_not_overwritten_by_stale_completion(): void
+    {
+        Queue::fake();
+        $product = Product::create(['sku' => 'RACE-1']);
+        $photo = $this->storedPhoto($product, 'products/race.jpg');
+
+        $builder = $this->partialBuilder();
+        // The "old" Python build runs while a crop mutation lands mid-build.
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo) {
+            $photo->update(['crop' => ['x' => 0.1, 'y' => 0.1, 'width' => 0.5, 'height' => 0.5],
+                'selection_source' => 'manual', 'selection_verified' => true,
+                'index_status' => 'rebuild-required']);
+            app(VisualIndexLifecycle::class)->markDirty("photo {$photo->id} crop/selection changed; full rebuild required");
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-race'];
+        });
+
+        $result = $builder->appendPending();
+
+        $this->assertSame(['added' => 1, 'skipped' => 0, 'generation' => 'generation-race',
+            'photos' => [$photo->id], 'feedback' => []], $result);
+        // The stale completion MUST NOT flip rebuild-required → indexed.
+        $this->assertSame('rebuild-required', $photo->fresh()->index_status);
+        // The dirty revision survives so the full rebuild still heals it.
+        $this->assertTrue(app(VisualIndexLifecycle::class)->isDirty());
+        $this->assertNotNull(app(VisualIndexLifecycle::class)->dirtyReason());
+        Queue::assertPushed(RebuildVisualIndex::class);
+    }
+
+    public function test_stale_pending_reset_is_not_marked_indexed(): void
+    {
+        Queue::fake();
+        $product = Product::create(['sku' => 'RACE-2']);
+        $photo = $this->storedPhoto($product, 'products/stale.jpg');
+
+        $builder = $this->partialBuilder();
+        // A stale controller write resets the row to pending mid-build
+        // (loaded before the batch marked it indexing). Old bytes were
+        // exported, so the row must stay pending for a retry — never indexed.
+        // Query-builder write mirrors the controller's blind model update
+        // (which always loads fresh in production, hence always dirty).
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo) {
+            \App\Models\ProductPhoto::whereKey($photo->id)->update(['index_status' => 'pending']);
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-stale'];
+        });
+
+        $builder->appendPending();
+
+        $this->assertSame('pending', $photo->fresh()->index_status);
+    }
+
+    public function test_normal_incremental_still_marks_indexed(): void
+    {
+        $product = Product::create(['sku' => 'RACE-OK']);
+        $photo = $this->storedPhoto($product, 'products/ok.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()
+            ->andReturn(['added' => 1, 'skipped' => 0, 'generation' => 'generation-ok']);
+
+        $result = $builder->appendPending();
+
+        $this->assertSame('indexed', $photo->fresh()->index_status);
+        $this->assertSame([$photo->id], $result['photos']);
+    }
+
+    public function test_failed_build_leaves_retryable_state_never_indexed(): void
+    {
+        $product = Product::create(['sku' => 'RACE-FAIL']);
+        $photo = $this->storedPhoto($product, 'products/fail.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andThrow(new \RuntimeException('boom'));
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        // Retryable, never indexed, never stuck in indexing.
+        $this->assertSame('failed', $photo->fresh()->index_status);
+    }
+
+    public function test_rebuild_required_row_with_missing_file_is_left_untouched(): void
+    {
+        $product = Product::create(['sku' => 'RACE-EXPORT']);
+        // Missing file + already awaiting a full rebuild: the batch must
+        // filter it out before any export attempt (no build, no status flip).
+        $photo = $product->photos()->create(['path' => 'products/missing.jpg', 'disk' => 'public', 'index_status' => 'rebuild-required']);
+        Storage::fake('public');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->never();
+
+        $result = $builder->appendPending();
+
+        $this->assertSame(null, $result['generation']);
+        $this->assertSame('rebuild-required', $photo->fresh()->index_status);
+    }
+}

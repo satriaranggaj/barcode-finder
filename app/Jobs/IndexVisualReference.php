@@ -60,7 +60,20 @@ class IndexVisualReference implements ShouldQueue
             // pending — including when the hint row itself is already
             // indexed, deleted, or ineligible.
             try {
-                $builder->appendPending();
+                $result = $builder->appendPending();
+                // Bounded drain: one batch is capped (limit 50) for CPU/RAM
+                // safety, so a backlog beyond the limit needs a follow-up.
+                // Exactly ONE continuation is scheduled, and only after a
+                // productive batch (a published generation). Poison rows that
+                // can never build (failed-forever) publish nothing, which
+                // terminates the chain instead of looping. No in-worker loop,
+                // no synchronous recursion: the follow-up is a queued job
+                // that re-acquires the single-writer lock like any other.
+                // Rebuild-required failures return via the catch below (no
+                // continuation): the queued full rebuild drains leftovers.
+                if (($result['generation'] ?? null) !== null && $builder->hasPendingReferences()) {
+                    self::dispatch($this->kind, $this->id)->afterCommit();
+                }
             } catch (\RuntimeException $error) {
                 // Rebuild-required (signature drift, changed/deleted refs)
                 // is already marked by the builder with a cache flag; it

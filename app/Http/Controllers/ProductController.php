@@ -391,15 +391,20 @@ class ProductController extends Controller
                 }
             }
         }
-        // Deduplicate while preserving best-to-worst order; bounded so a
-        // malformed payload cannot force an unbounded loop.
+        // Deduplicate while preserving best-to-worst order. The cap (50) is
+        // derived from the bounded response contract, not arbitrary:
+        // ai-service caps shortlist slots per SKU at candidates_per_sku
+        // (Settings enforce 1..50), and RetrievalClient rejects longer
+        // matched_image_ids — so a legitimate list is always fully scanned
+        // and a catalog hit can never hide past the cutoff. The in-memory
+        // collection lookup keeps this free of unbounded WHERE IN queries.
         $ordered = [];
         $seen = [];
         foreach ($candidates as $candidate) {
             if (! isset($seen[$candidate])) {
                 $seen[$candidate] = true;
                 $ordered[] = $candidate;
-                if (count($ordered) >= 25) {
+                if (count($ordered) >= 50) {
                     break;
                 }
             }

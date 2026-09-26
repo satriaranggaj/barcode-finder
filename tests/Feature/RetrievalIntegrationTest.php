@@ -375,7 +375,7 @@ class RetrievalIntegrationTest extends TestCase
                 'score' => 0.81, 'visual_score' => 0.8, 'object_score' => 0.8,
                 'global_score' => 0.79, 'ocr_score' => 0.9, 'text_score' => null,
                 'siglip_score' => 0.78, 'dino_score' => 0.82, 'local_score' => null,
-                'matched_images' => 2, 'matched_image_ids' => [(string) $photo->id],
+                'matched_images' => 2, 'matched_image_ids' => [(string) $photo->id, 'verified-7.webp'],
             ]],
         ])]);
         $response = $this->post(route('products.search'), ['image' => UploadedFile::fake()->image('query.jpg')]);

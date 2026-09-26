@@ -74,6 +74,7 @@ class RetrievalClient
                 || ! is_finite((float) $row['score']) || abs((float) $row['score']) > 1.000001) {
                 $this->invalidContract('kandidat hasil tidak sesuai kontrak');
             }
+            $this->validateVariantReferences($row);
             // Contract forbids full embedding vectors in /search responses.
             foreach ($row as $key => $value) {
                 if (is_string($key) && preg_match('/embedding|vector/i', $key)) {
@@ -83,6 +84,48 @@ class RetrievalClient
         }
 
         return $data;
+    }
+
+    /**
+     * Validate the variant-cover evidence of one /search candidate.
+     *
+     * Python (`aggregate_skus()`) guarantees: winning `image_id` is a
+     * non-empty string, `matched_image_ids` is a bounded list of non-empty
+     * strings in score order, and `matched_images` equals its count. Absent
+     * keys are tolerated for backward compatibility with older responses;
+     * present-but-malformed values are a controlled contract failure (never
+     * silently accepted into a fallback the UI cannot distinguish).
+     */
+    private function validateVariantReferences(array $row): void
+    {
+        if (array_key_exists('image_id', $row) && $row['image_id'] !== null) {
+            if (! is_string($row['image_id']) || $row['image_id'] === '' || strlen($row['image_id']) > 512) {
+                $this->invalidContract('image_id hasil tidak sesuai kontrak');
+            }
+        }
+        $matchedIds = $row['matched_image_ids'] ?? null;
+        if ($matchedIds !== null) {
+            // Bounded by the ai-service per-SKU cap (candidates_per_sku ≤ 50
+            // per Settings validation); longer lists are never legitimate.
+            // Lists only: a decoded JSON object (assoc array) is rejected.
+            if (! is_array($matchedIds) || ! array_is_list($matchedIds) || count($matchedIds) > 50) {
+                $this->invalidContract('matched_image_ids hasil tidak sesuai kontrak');
+            }
+            foreach ($matchedIds as $candidate) {
+                if (! is_string($candidate) || $candidate === '' || strlen($candidate) > 512) {
+                    $this->invalidContract('matched_image_ids hasil tidak sesuai kontrak');
+                }
+            }
+        }
+        $matchedCount = $row['matched_images'] ?? null;
+        if ($matchedCount !== null) {
+            if (! is_int($matchedCount) || $matchedCount < 0) {
+                $this->invalidContract('matched_images hasil tidak sesuai kontrak');
+            }
+            if (is_array($matchedIds) && $matchedCount !== count($matchedIds)) {
+                $this->invalidContract('matched_images tidak konsisten dengan matched_image_ids');
+            }
+        }
     }
 
     private function invalidContract(string $reason): never

@@ -153,6 +153,22 @@ class VisualIndexBuilder
     }
 
     /**
+     * Whether any incremental-eligible work remains: photos awaiting append
+     * (including interrupted `indexing` rows, retried by the next run) or
+     * unindexed eligible feedback. `rebuild-required` rows are excluded —
+     * HNSW cannot absorb them; only a full rebuild can.
+     */
+    public function hasPendingReferences(): bool
+    {
+        if (ProductPhoto::whereIn('index_status', ['pending', 'failed', 'indexing'])->exists()) {
+            return true;
+        }
+
+        return SearchFeedback::where('training_status', 'verified')->where('reference_eligible', true)
+            ->whereNull('indexed_at')->exists();
+    }
+
+    /**
      * Coalesced incremental append: drain every pending photo + unindexed
      * eligible feedback into ONE private workspace and ONE builder run, then
      * publish ONE new generation. Ten simultaneous uploads therefore produce
@@ -160,6 +176,13 @@ class VisualIndexBuilder
      *
      * Idempotent: image_id dedup inside build_index skips already-present
      * references, so re-running publishes an equivalent generation at most.
+     *
+     * Concurrency: completion is CAS-guarded on (id, index_status,
+     * updated_at). A mutation landing mid-build (crop/SKU/description/bytes
+     * edit → `rebuild-required`, or a stale-controller reset → `pending`)
+     * changes status and/or bumps updated_at, so the stale completion can
+     * never overwrite it: the row keeps its newer state for the full
+     * rebuild / next incremental run instead of falsely becoming `indexed`.
      *
      * @return array{added:int, skipped:int, generation:?string, photos:list<int>, feedback:list<int>}
      *
@@ -182,8 +205,24 @@ class VisualIndexBuilder
         }
 
         $photoIds = $photos->map(fn ($photo) => $photo->id)->all();
+        $claimedAt = [];
         if ($photoIds !== []) {
-            ProductPhoto::whereKey($photoIds)->update(['index_status' => 'indexing']);
+            // Guarded transition: a row that flipped to `rebuild-required`
+            // between SELECT and here (mutation won the race) must survive.
+            ProductPhoto::whereKey($photoIds)
+                ->whereIn('index_status', ['pending', 'failed', 'indexing'])
+                ->update(['index_status' => 'indexing']);
+            // Claim snapshot AFTER the transition: these timestamps identify
+            // exactly the reference state being built. Re-read (instead of
+            // trusting the pre-mark models) so rows claimed by nobody — e.g.
+            // flipped to rebuild-required/pending mid-mark — are excluded
+            // from the export and keep their newer state.
+            foreach (ProductPhoto::whereKey($photoIds)->where('index_status', 'indexing')
+                ->pluck('updated_at', 'id')->all() as $id => $timestamp) {
+                $claimedAt[(int) $id] = $timestamp;
+            }
+            $photos = $photos->filter(fn ($photo) => isset($claimedAt[$photo->id]))->values();
+            $photoIds = array_keys($claimedAt);
         }
 
         $workspace = Storage::disk('local')->path(app(StoragePaths::class)->indexBuild());
@@ -196,8 +235,12 @@ class VisualIndexBuilder
                     $writtenPhotos[] = $photo->id;
                 } catch (\Throwable $error) {
                     // One corrupt upload must not block the other nine:
-                    // park it as failed and keep the batch moving.
-                    ProductPhoto::whereKey($photo->id)->update(['index_status' => 'failed']);
+                    // park it as failed and keep the batch moving. Guarded so
+                    // a newer mutation state (rebuild-required/pending) set
+                    // while exporting is never clobbered into failed.
+                    ProductPhoto::whereKey($photo->id)
+                        ->whereIn('index_status', ['pending', 'failed', 'indexing'])
+                        ->update(['index_status' => 'failed']);
                     report($error);
                 }
             }
@@ -222,10 +265,35 @@ class VisualIndexBuilder
             $result = $this->runBuilder($workspace);
 
             if ($writtenPhotos !== []) {
-                ProductPhoto::whereKey($writtenPhotos)->update(['index_status' => 'indexed']);
+                // CAS completion: a row becomes `indexed` only when it still
+                // carries the exact built state (indexing + pre-build
+                // timestamp). Any mid-build mutation flips status and/or
+                // bumps updated_at, excluding the row here — it keeps
+                // `rebuild-required` (healed by the queued full rebuild via
+                // the surviving dirty revision) or `pending` (retried by the
+                // next incremental run) instead of falsely becoming indexed.
+                // Grouped by timestamp so one bounded UPDATE covers each
+                // same-second cohort; rows whose claim vanished (deleted)
+                // match nothing and are simply skipped.
+                $byStamp = [];
+                foreach ($writtenPhotos as $id) {
+                    if (! isset($claimedAt[$id])) {
+                        continue;
+                    }
+                    $stamp = $claimedAt[$id] instanceof \DateTimeInterface
+                        ? $claimedAt[$id]->format('Y-m-d H:i:s')
+                        : (string) $claimedAt[$id];
+                    $byStamp[$stamp][] = $id;
+                }
+                foreach ($byStamp as $stamp => $ids) {
+                    ProductPhoto::whereKey($ids)->where('index_status', 'indexing')
+                        ->where('updated_at', $stamp)->update(['index_status' => 'indexed']);
+                }
             }
             if ($writtenFeedback !== []) {
-                SearchFeedback::whereKey($writtenFeedback)->update(['indexed_at' => now()]);
+                // Redelivery guard: only still-unindexed rows are stamped, so
+                // a retried batch can never rewrite existing indexed_at marks.
+                SearchFeedback::whereKey($writtenFeedback)->whereNull('indexed_at')->update(['indexed_at' => now()]);
             }
 
             return ['added' => $result['added'] ?? 0, 'skipped' => $result['skipped'] ?? 0,
@@ -253,6 +321,13 @@ class VisualIndexBuilder
                 // the message (head is only INFO preamble from model load).
                 $tail = substr($error->getMessage(), -500);
                 Cache::forever('visual-index-rebuild-required', $tail !== '' ? $tail : $error->getMessage());
+                // Guarantee the rebuild is actually scheduled: writers
+                // normally markDirty() themselves, but this branch is the
+                // authoritative proof the serving generation is stale, so a
+                // coalesced rebuild is ensured even if the triggering change
+                // bypassed the lifecycle (stale write, direct DB edit).
+                app(VisualIndexLifecycle::class)->markDirty(
+                    $tail !== '' ? $tail : 'incremental build detected stale references; full rebuild required');
             } else {
                 if ($writtenPhotos !== []) {
                     ProductPhoto::whereKey($writtenPhotos)
@@ -595,7 +670,9 @@ class VisualIndexBuilder
         return $this->runBuilder($workspace, true, $onOutput);
     }
 
-    private function runBuilder(string $workspace, bool $rebuild = false, ?callable $onOutput = null): array
+    // Protected (not private) so deterministic tests can stub the expensive
+    // Python boundary without spawning real SigLIP/DINO inference.
+    protected function runBuilder(string $workspace, bool $rebuild = false, ?callable $onOutput = null): array
     {
         $command = [config('retrieval.python'), '-B', '-m', 'app.scripts.build_index', '--dataset', $workspace];
         if ($rebuild) {

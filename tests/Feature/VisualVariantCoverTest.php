@@ -215,4 +215,23 @@ class VisualVariantCoverTest extends TestCase
             ->assertOk()
             ->assertViewHas('results', fn ($rows) => $rows->count() === 1 && $rows->first()->photo === $purple->path);
     }
+
+    public function test_deep_catalog_match_past_position_25_still_resolves(): void
+    {
+        ['purple' => $purple, 'yellow' => $yellow] = $this->flowerProduct();
+        // 34 non-catalog ghosts then the true catalog hit at position 35:
+        // within the bounded contract (≤50) the resolver must scan them all
+        // instead of stopping early and falling back to the first photo.
+        $ghosts = array_map(fn ($i) => "ghost-{$i}.webp", range(1, 34));
+        $ids = [...$ghosts, $yellow->id.'.webp'];
+        $this->fakeSearch([[
+            'rank' => 1, 'sku' => 'FLOWER-001', 'image_id' => 'verified-900.webp', 'score' => 0.93,
+            'matched_images' => count($ids), 'matched_image_ids' => $ids,
+        ]]);
+        $this->post(route('products.search'), ['image' => UploadedFile::fake()->image('query.jpg')])
+            ->assertOk()->assertViewHas('error', null)
+            ->assertViewHas('results', fn ($rows) => $rows->count() === 1
+                && $rows->first()->photo === $yellow->path
+                && $rows->first()->photo !== $purple->path);
+    }
 }
