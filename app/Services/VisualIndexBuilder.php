@@ -169,16 +169,84 @@ class VisualIndexBuilder
     }
 
     /**
-     * Deterministic identity of the exact reference state an AI build
-     * consumes, derived from existing data (no schema change).
+     * Photo-side columns that feed the exported reference, captured RAW
+     * (exact stored representation) for single-statement CAS. Cross-table
+     * inputs (SKU/description/trusted attributes) are verified by the
+     * reload fingerprint instead: every real writer that changes them flips
+     * served/indexing photos via fresh unconditional queries, so both
+     * interleavings with completion stay correct (flip-first skips, completion-
+     * first gets overwritten by the flip + dirty revision).
+     */
+    private const PHOTO_STATE_COLUMNS = [
+        'product_id', 'photo_hash', 'crop', 'selection_source',
+        'selection_verified', 'source', 'disk', 'master_path', 'path',
+    ];
+
+    private const FEEDBACK_STATE_COLUMNS = [
+        'training_status', 'reference_eligible', 'confirmed_product_id',
+        'confirmed_sku', 'photo_hash', 'crop', 'selection_source',
+        'disk', 'query_image_path',
+    ];
+
+    /**
+     * Raw photo-side state for atomic CAS. Integers normalized so the WHERE
+     * matches on any driver regardless of PDO native/string fetches.
      *
-     * Covers every field writeOnePhoto()/writeOneFeedback() feeds the
-     * exporter: image identity + bytes pointer (disk/master_path/path +
-     * photo_hash), crop, selection metadata, product linkage + SKU +
-     * description + canonical trusted attributes. Fields that never reach
-     * the reference (thumbnail, verification-only flags excluded from the
-     * canonical comparison, timestamps) are deliberately excluded so
-     * unrelated touches can never block a legitimate completion.
+     * @return array<string, mixed>
+     */
+    private static function photoStateRaw(ProductPhoto $photo): array
+    {
+        $raw = [];
+        foreach (self::PHOTO_STATE_COLUMNS as $column) {
+            $raw[$column] = $photo->getRawOriginal($column);
+        }
+        $raw['product_id'] = (int) $raw['product_id'];
+        $raw['selection_verified'] = (int) (bool) $raw['selection_verified'];
+
+        return $raw;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function feedbackStateRaw(SearchFeedback $row): array
+    {
+        $raw = [];
+        foreach (self::FEEDBACK_STATE_COLUMNS as $column) {
+            $raw[$column] = $row->getRawOriginal($column);
+        }
+        $raw['confirmed_product_id'] = (int) $raw['confirmed_product_id'];
+        $raw['reference_eligible'] = (int) (bool) $raw['reference_eligible'];
+
+        return $raw;
+    }
+
+    /**
+     * Append a photo-side state guard to an UPDATE/SELECT query: every
+     * reference-affecting column must still hold its claimed value.
+     * Comparison and update therefore happen in ONE atomic SQL statement —
+     * no interleaving can slip between verification and commit, on any
+     * transaction isolation level, without any writer cooperation.
+     */
+    private static function applyPhotoStateGuard(\Illuminate\Database\Eloquent\Builder $query, array $raw): void
+    {
+        foreach ($raw as $column => $value) {
+            $query->where($column, $value);
+        }
+    }
+
+    private static function applyFeedbackStateGuard(\Illuminate\Database\Eloquent\Builder $query, array $raw): void
+    {
+        foreach ($raw as $column => $value) {
+            $query->where($column, $value);
+        }
+    }
+
+    /**
+     * Deterministic identity of the exact reference state an AI build
+     * consumes, derived from existing data (no schema change). Covers the
+     * photo/feedback-side fields above plus cross-table SKU/description/
+     * trusted attributes; timestamps are deliberately excluded.
      */
     private static function canonicalize(mixed $value): mixed
     {
@@ -239,6 +307,106 @@ class VisualIndexBuilder
     }
 
     /**
+     * Atomically reconcile successfully built photo references.
+     *
+     * Two layers, in order:
+     * 1. Reload-compare: reload CURRENT state (product + attributes) and
+     *    keep only rows whose full fingerprint still equals the claimed
+     *    (published) state. Catches every mutation committed during the
+     *    minutes-long build, including cross-table SKU/description/trusted
+     *    changes and same-second writes timestamps cannot separate.
+     * 2. Single-statement CAS per row: UPDATE ... WHERE id + indexing +
+     *    exact claimed photo-side columns. Comparison and commit happen in
+     *    ONE atomic SQL statement, so no mutation — however timed — can slip
+     *    between verification and the status change, on any isolation level,
+     *    without any writer cooperation. Cross-table micro-window changes
+     *    are covered by the writers' own protocol: they flip served/indexing
+     *    photos via fresh unconditional queries, so flip-first skips here
+     *    while completion-first gets overwritten by the flip + dirty revision.
+     *
+     * Anything unmatched keeps its newer state (rebuild-required for the
+     * queued full rebuild, pending/indexing for retry) and deleted rows
+     * match nothing: never resurrected, never fatal. Bounded: one reload
+     * query plus at most one PK UPDATE per written row (batch ≤ 50).
+     *
+     * @param  list<int>  $writtenIds
+     * @param  array<int, string>  $claimedHash
+     * @param  array<int, array<string, mixed>>  $claimedRaw
+     * @return list<int> matched ids now marked indexed
+     */
+    protected function reconcilePhotos(array $writtenIds, array $claimedHash, array $claimedRaw): array
+    {
+        if ($writtenIds === []) {
+            return [];
+        }
+        $candidates = [];
+        $current = ProductPhoto::with('product.attributes')
+            ->whereKey($writtenIds)->where('index_status', 'indexing')->get();
+        foreach ($current as $model) {
+            if ($model->product === null) {
+                continue;
+            }
+            if (($claimedHash[$model->id] ?? null) !== null
+                && self::referenceStateHash($model) === $claimedHash[$model->id]
+                && isset($claimedRaw[$model->id])) {
+                $candidates[$model->id] = $claimedRaw[$model->id];
+            }
+        }
+        $matching = [];
+        foreach ($candidates as $id => $raw) {
+            $updated = ProductPhoto::whereKey($id)->where('index_status', 'indexing');
+            self::applyPhotoStateGuard($updated, $raw);
+            if ($updated->update(['index_status' => 'indexed']) > 0) {
+                $matching[] = $id;
+            }
+        }
+
+        return $matching;
+    }
+
+    /**
+     * Atomically reconcile successfully built feedback references: still
+     * unindexed AND content-identical to the published reference — verified
+     * in reload, committed in one guarded statement. A retried batch can
+     * neither rewrite existing marks nor stamp a mutated reference. Private
+     * feedback images are never exposed here; only indexed_at is written.
+     *
+     * @param  list<int>  $writtenIds
+     * @param  array<int, string>  $claimedHash
+     * @param  array<int, array<string, mixed>>  $claimedRaw
+     * @return list<int> matched ids now stamped
+     */
+    protected function reconcileFeedback(array $writtenIds, array $claimedHash, array $claimedRaw): array
+    {
+        if ($writtenIds === []) {
+            return [];
+        }
+        $candidates = [];
+        $current = SearchFeedback::with('confirmedProduct.attributes')
+            ->whereKey($writtenIds)->whereNull('indexed_at')->get();
+        foreach ($current as $model) {
+            if ($model->confirmedProduct === null) {
+                continue;
+            }
+            if (($claimedHash[$model->id] ?? null) !== null
+                && self::feedbackStateHash($model) === $claimedHash[$model->id]
+                && isset($claimedRaw[$model->id])) {
+                $candidates[$model->id] = $claimedRaw[$model->id];
+            }
+        }
+        $matching = [];
+        foreach ($candidates as $id => $raw) {
+            $updated = SearchFeedback::whereKey($id)->whereNull('indexed_at');
+            self::applyFeedbackStateGuard($updated, $raw);
+            if ($updated->update(['indexed_at' => now()]) > 0) {
+                $matching[] = $id;
+            }
+        }
+
+        return $matching;
+    }
+
+    /**
      * Coalesced incremental append: drain every pending photo + unindexed
      * eligible feedback into ONE private workspace and ONE builder run, then
      * publish ONE new generation. Ten simultaneous uploads therefore produce
@@ -250,15 +418,13 @@ class VisualIndexBuilder
      * Concurrency invariant: CLAIMED STATE == EXPORTED STATE == STATE ALLOWED
      * TO BECOME INDEXED. Candidates are claimed, then RELOADED fresh
      * (product + attributes included) and only that reloaded state is
-     * exported, fingerprinted, and eligible for completion. A mutation
-     * landing anywhere before the completion reload changes the fingerprint
-     * (and served mutations additionally flip status + bump the dirty
-     * revision), so the stale completion can never mark the newer state
-     * indexed: the row keeps `rebuild-required` (healed by the queued full
-     * rebuild) or `pending` (retried by the next incremental run) instead of
-     * falsely becoming `indexed`. Timestamps are intentionally NOT the
-     * identity: second-precision storage cannot separate a claim from a
-     * same-second mutation, while content cannot collide.
+     * exported, fingerprinted, and eligible for completion. Completion is
+     * atomic per row (reconcilePhotos/reconcileFeedback): full-fingerprint
+     * reload-compare for cross-table staleness, then a single-statement CAS
+     * on the exact claimed photo-side columns, so nothing can slip between
+     * verification and commit. Timestamps are intentionally NOT the identity:
+     * second-precision storage cannot separate a claim from a same-second
+     * mutation, while content cannot collide.
      *
      * @return array{added:int, skipped:int, generation:?string, photos:list<int>, feedback:list<int>}
      *
@@ -281,11 +447,14 @@ class VisualIndexBuilder
         }
 
         $photoIds = $photos->map(fn ($photo) => $photo->id)->all();
-        // Claimed reference identity: id => content fingerprint of the exact
-        // state being built. Only fingerprinted rows are exported and only
-        // fingerprint-matching rows may complete to indexed.
+        // Claimed reference identity per row: content fingerprint (full
+        // state incl. cross-table inputs) + raw photo-side columns for the
+        // atomic single-statement CAS. Only claimed rows are exported and
+        // only atomically-verified rows may complete.
         $claimedPhotoHash = [];
+        $claimedPhotoRaw = [];
         $claimedFeedbackHash = [];
+        $claimedFeedbackRaw = [];
         if ($photoIds !== []) {
             // Guarded transition: a row that flipped to `rebuild-required`
             // between SELECT and here (mutation won the race) must survive.
@@ -301,6 +470,7 @@ class VisualIndexBuilder
                 ->orderBy('id')->get()->filter(fn ($photo) => $photo->product !== null)->values();
             foreach ($photos as $photo) {
                 $claimedPhotoHash[$photo->id] = self::referenceStateHash($photo);
+                $claimedPhotoRaw[$photo->id] = self::photoStateRaw($photo);
             }
         }
         // Same reload discipline for feedback: the exporter consumes live
@@ -314,6 +484,7 @@ class VisualIndexBuilder
             ->orderBy('id')->get()->filter(fn ($row) => $row->confirmedProduct !== null)->values();
         foreach ($feedbacks as $row) {
             $claimedFeedbackHash[$row->id] = self::feedbackStateHash($row);
+            $claimedFeedbackRaw[$row->id] = self::feedbackStateRaw($row);
         }
 
         $workspace = Storage::disk('local')->path(app(StoragePaths::class)->indexBuild());
@@ -326,12 +497,17 @@ class VisualIndexBuilder
                     $writtenPhotos[] = $photo->id;
                 } catch (\Throwable $error) {
                     // One corrupt upload must not block the other nine:
-                    // park it as failed and keep the batch moving. Guarded so
-                    // a newer mutation state (rebuild-required/pending) set
+                    // park it as failed and keep the batch moving. Same
+                    // ownership rule as completion: only the exact claimed
+                    // state may transition — a newer mutation state
+                    // (rebuild-required/pending, or changed content) set
                     // while exporting is never clobbered into failed.
-                    ProductPhoto::whereKey($photo->id)
-                        ->whereIn('index_status', ['pending', 'failed', 'indexing'])
-                        ->update(['index_status' => 'failed']);
+                    $failed = ProductPhoto::whereKey($photo->id)
+                        ->whereIn('index_status', ['pending', 'failed', 'indexing']);
+                    if (isset($claimedPhotoRaw[$photo->id])) {
+                        self::applyPhotoStateGuard($failed, $claimedPhotoRaw[$photo->id]);
+                    }
+                    $failed->update(['index_status' => 'failed']);
                     report($error);
                 }
             }
@@ -355,55 +531,8 @@ class VisualIndexBuilder
 
             $result = $this->runBuilder($workspace);
 
-            if ($writtenPhotos !== []) {
-                // Fingerprint completion: reload the CURRENT state and mark
-                // indexed only rows whose content still equals the exact
-                // published state. Any mutation during the build (crop, bytes,
-                // paths, SKU, description, trusted attributes) changes the
-                // hash and excludes the row — regardless of timestamp
-                // resolution — while served mutations additionally flip
-                // status via the lifecycle. The final UPDATE re-checks status
-                // for the micro-window between this reload and the write;
-                // anything it cannot see stays pending/rebuild-required and
-                // converges via retry/rebuild, never falsely indexed.
-                // Deleted rows match nothing: never resurrected, never fatal.
-                $matching = [];
-                $current = ProductPhoto::with('product.attributes')
-                    ->whereKey($writtenPhotos)->where('index_status', 'indexing')->get();
-                foreach ($current as $model) {
-                    if ($model->product === null) {
-                        continue;
-                    }
-                    if (($claimedPhotoHash[$model->id] ?? null) !== null
-                        && self::referenceStateHash($model) === $claimedPhotoHash[$model->id]) {
-                        $matching[] = $model->id;
-                    }
-                }
-                if ($matching !== []) {
-                    ProductPhoto::whereKey($matching)->where('index_status', 'indexing')
-                        ->update(['index_status' => 'indexed']);
-                }
-            }
-            if ($writtenFeedback !== []) {
-                // Same ownership rule: still unindexed AND content-identical
-                // to the published reference. A retried batch can neither
-                // rewrite existing marks nor stamp a mutated reference.
-                $current = SearchFeedback::with('confirmedProduct.attributes')
-                    ->whereKey($writtenFeedback)->whereNull('indexed_at')->get();
-                $matching = [];
-                foreach ($current as $model) {
-                    if ($model->confirmedProduct === null) {
-                        continue;
-                    }
-                    if (($claimedFeedbackHash[$model->id] ?? null) !== null
-                        && self::feedbackStateHash($model) === $claimedFeedbackHash[$model->id]) {
-                        $matching[] = $model->id;
-                    }
-                }
-                if ($matching !== []) {
-                    SearchFeedback::whereKey($matching)->whereNull('indexed_at')->update(['indexed_at' => now()]);
-                }
-            }
+            $this->reconcilePhotos($writtenPhotos, $claimedPhotoHash, $claimedPhotoRaw);
+            $this->reconcileFeedback($writtenFeedback, $claimedFeedbackHash, $claimedFeedbackRaw);
 
             return ['added' => $result['added'] ?? 0, 'skipped' => $result['skipped'] ?? 0,
                 'generation' => $result['generation'] ?? null, 'photos' => $writtenPhotos, 'feedback' => $writtenFeedback];
@@ -438,9 +567,17 @@ class VisualIndexBuilder
                 app(VisualIndexLifecycle::class)->markDirty(
                     $tail !== '' ? $tail : 'incremental build detected stale references; full rebuild required');
             } else {
-                if ($writtenPhotos !== []) {
-                    ProductPhoto::whereKey($writtenPhotos)
-                        ->where('index_status', 'indexing')->update(['index_status' => 'failed']);
+                // Same ownership as success reconciliation: only the exact
+                // claimed state may transition to failed. A row mutated after
+                // the claim (status flip or content change) keeps its newer
+                // state for retry/rebuild instead of being parked as failed.
+                foreach ($writtenPhotos as $id) {
+                    if (! isset($claimedPhotoRaw[$id])) {
+                        continue;
+                    }
+                    $failed = ProductPhoto::whereKey($id)->where('index_status', 'indexing');
+                    self::applyPhotoStateGuard($failed, $claimedPhotoRaw[$id]);
+                    $failed->update(['index_status' => 'failed']);
                 }
             }
             throw $error;

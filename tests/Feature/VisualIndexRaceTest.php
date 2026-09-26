@@ -261,4 +261,160 @@ class VisualIndexRaceTest extends TestCase
 
         $this->assertNull(\App\Models\ProductPhoto::find($photo->id));
     }
+
+    public function test_no_flip_content_mutation_during_build_is_not_indexed(): void
+    {
+        // Test A core: a writer changes reference content WITHOUT flipping
+        // status (stays indexing) while the build runs — the exact case a
+        // status-only guard misses. Only two valid outcomes: reject (mutation
+        // first) or invalidate-after (completion first). Never V2+indexed(V1).
+        $product = Product::create(['sku' => 'RACE-NOFLIP']);
+        $photo = $this->storedPhoto($product, 'products/noflip.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo) {
+            \App\Models\ProductPhoto::whereKey($photo->id)->update([
+                'crop' => json_encode(['x' => 0.4, 'y' => 0.4, 'width' => 0.2, 'height' => 0.2]),
+            ]);
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-noflip'];
+        });
+
+        $builder->appendPending();
+
+        $this->assertSame('indexing', $photo->fresh()->index_status);
+    }
+
+    public function test_completion_update_carries_atomic_state_guard(): void
+    {
+        // Anti-regression for §10's forbidden pattern: the final UPDATE that
+        // marks indexed must compare the claimed photo-side state IN the same
+        // statement (no unconditional bulk update). Inspects the real query
+        // log of a successful run — deterministic, no timing involved.
+        $product = Product::create(['sku' => 'RACE-SQL']);
+        $photo = $this->storedPhoto($product, 'products/sql.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()
+            ->andReturn(['added' => 1, 'skipped' => 0, 'generation' => 'generation-sql']);
+
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        try {
+            $builder->appendPending();
+        } finally {
+            $queries = \Illuminate\Support\Facades\DB::getQueryLog();
+            \Illuminate\Support\Facades\DB::disableQueryLog();
+        }
+
+        $completion = null;
+        foreach ($queries as $entry) {
+            $sql = is_array($entry) ? ($entry['query'] ?? '') : $entry->sql;
+            if (str_contains($sql, '"index_status" = ?') && str_contains($sql, 'product_photos')) {
+                $completion = $sql;
+            }
+        }
+        $this->assertNotNull($completion, 'Expected a guarded product_photos completion UPDATE');
+        foreach (['"index_status"', '"crop"', '"photo_hash"', '"selection_source"', '"path"', '"product_id"'] as $guard) {
+            $this->assertStringContainsString($guard, $completion);
+        }
+        $this->assertSame('indexed', $photo->fresh()->index_status);
+    }
+
+    public function test_trusted_attribute_mutation_is_not_marked_indexed(): void
+    {
+        // Test C: trusted manual attributes feed the exported sidecar. A new
+        // manual row mid-build changes the effective reference without
+        // touching the photo row at all — completion must still refuse it.
+        $product = Product::create(['sku' => 'RACE-TRUSTED', 'description' => 'Obeng']);
+        $photo = $this->storedPhoto($product, 'products/trusted.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($product) {
+            $product->attributes()->create(['key' => 'color', 'value' => 'Merah', 'source' => \App\Models\ProductAttribute::SOURCE_MANUAL]);
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-trusted'];
+        });
+
+        $builder->appendPending();
+
+        $this->assertSame('indexing', $photo->fresh()->index_status);
+    }
+
+    public function test_failure_after_no_flip_mutation_keeps_retryable_state(): void
+    {
+        // Test D: generic builder failure after a status-preserving content
+        // change — the failure handler owns only claimed V1, so it must not
+        // park V2 as failed. Row stays retryable for the next run.
+        $product = Product::create(['sku' => 'RACE-FAIL-NOFLIP']);
+        $photo = $this->storedPhoto($product, 'products/fail-noflip.jpg');
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($photo) {
+            \App\Models\ProductPhoto::whereKey($photo->id)->update([
+                'crop' => json_encode(['x' => 0.1, 'y' => 0.1, 'width' => 0.2, 'height' => 0.2]),
+            ]);
+            throw new \RuntimeException('generic inference failure');
+        });
+
+        try {
+            $builder->appendPending();
+            $this->fail('Expected RuntimeException');
+        } catch (\RuntimeException) {
+        }
+
+        $this->assertSame('indexing', $photo->fresh()->index_status);
+    }
+
+    public function test_feedback_product_mutation_is_not_stamped(): void
+    {
+        // Test E: verified feedback whose product metadata changes mid-build
+        // must not be stamped indexed_at with the stale published reference.
+        Storage::fake('local');
+        $admin = \App\Models\User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'RACE-FB', 'description' => 'Desc V1']);
+        Storage::disk('local')->put('verified-search/fb.webp', 'fake-bytes');
+        $row = \App\Models\SearchFeedback::create([
+            'user_id' => $admin->id, 'confirmed_product_id' => $product->id,
+            'predicted_sku' => 'RACE-FB', 'confirmed_sku' => 'RACE-FB',
+            'disk' => 'local', 'query_image_path' => 'verified-search/fb.webp',
+            'photo_hash' => str_repeat('c', 64), 'dhash' => str_repeat('3', 16),
+            'training_status' => 'verified', 'reference_eligible' => true,
+        ]);
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()->andReturnUsing(function () use ($product) {
+            $product->update(['description' => 'Desc V2']);
+
+            return ['added' => 1, 'skipped' => 0, 'generation' => 'generation-fb-mut'];
+        });
+
+        $builder->appendPending();
+
+        $this->assertNull($row->fresh()->indexed_at);
+    }
+
+    public function test_unchanged_feedback_is_stamped(): void
+    {
+        // Control for E: no mutation → verified feedback stamps normally.
+        Storage::fake('local');
+        $admin = \App\Models\User::factory()->create(['role' => 'admin']);
+        $product = Product::create(['sku' => 'RACE-FB-OK']);
+        Storage::disk('local')->put('verified-search/ok.webp', 'fake-bytes');
+        $row = \App\Models\SearchFeedback::create([
+            'user_id' => $admin->id, 'confirmed_product_id' => $product->id,
+            'predicted_sku' => 'RACE-FB-OK', 'confirmed_sku' => 'RACE-FB-OK',
+            'disk' => 'local', 'query_image_path' => 'verified-search/ok.webp',
+            'photo_hash' => str_repeat('d', 64), 'dhash' => str_repeat('4', 16),
+            'training_status' => 'verified', 'reference_eligible' => true,
+        ]);
+
+        $builder = $this->partialBuilder();
+        $builder->shouldReceive('runBuilder')->once()
+            ->andReturn(['added' => 1, 'skipped' => 0, 'generation' => 'generation-fb-ok']);
+
+        $result = $builder->appendPending();
+
+        $this->assertNotNull($row->fresh()->indexed_at);
+        $this->assertSame([$row->id], $result['feedback']);
+    }
 }
