@@ -33,6 +33,9 @@
                     @endauth
                 </nav>
                 <div class="hidden items-center gap-4 text-xs font-semibold text-[#765c47] md:flex">
+                    <button type="button" data-pwa-install hidden aria-label="Install Lensku" class="rounded-xl bg-[#543019] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#6b4025] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Install Lensku</button>
+                    <button type="button" data-pwa-ios hidden aria-label="Tambahkan Lensku ke Layar Utama" class="rounded-xl bg-[#543019] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#6b4025] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Tambahkan ke Layar Utama</button>
+                    <button type="button" data-pwa-update hidden aria-label="Muat ulang ke versi baru Lensku" class="rounded-xl bg-[#ffc20e] px-4 py-2.5 text-sm font-bold text-[#543019] transition hover:bg-[#ffd633] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Versi baru tersedia — Muat ulang</button>
                     <span class="flex items-center gap-2">
                         <span class="h-2 w-2 rounded-full bg-[#ffc20e]"></span> 
                             AI ready
@@ -51,6 +54,9 @@
             </div>
             <nav id="mobile-navigation" hidden class="mx-auto mt-4 max-w-[1400px] border-t border-[#eadfca] pt-4 md:hidden">
                 <div class="flex flex-col gap-1 text-sm font-semibold">
+                    <button type="button" data-pwa-install hidden aria-label="Install Lensku" class="rounded-xl bg-[#543019] px-4 py-3 text-left font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Install Lensku</button>
+                    <button type="button" data-pwa-ios hidden aria-label="Tambahkan Lensku ke Layar Utama" class="rounded-xl bg-[#543019] px-4 py-3 text-left font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Tambahkan ke Layar Utama</button>
+                    <button type="button" data-pwa-update hidden aria-label="Muat ulang ke versi baru Lensku" class="rounded-xl bg-[#ffc20e] px-4 py-3 text-left font-bold text-[#543019] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Versi baru tersedia — Muat ulang</button>
                     <a href="{{ route('products.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('products.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">Katalog</a>
                     @auth
                         <a href="{{ route('admin.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('admin.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">Admin workspace</a>
@@ -62,6 +68,19 @@
                 </div>
             </nav>
         </header>
+
+        {{-- iOS Add to Home Screen instructions: shown only via the iOS fallback CTA. --}}
+        <div data-pwa-ios-help hidden role="dialog" aria-labelledby="pwa-ios-help-title" class="mx-auto mt-4 max-w-[1400px] px-5 lg:px-10">
+            <div class="rounded-2xl border border-[#ead9b8] bg-[#fffdf4] p-5">
+                <h2 id="pwa-ios-help-title" data-pwa-ios-help-title tabindex="-1" class="font-bold outline-none">Tambahkan Lensku ke Layar Utama</h2>
+                <ol class="mt-3 list-decimal space-y-1 pl-5 text-sm leading-6 text-[#765c47]">
+                    <li>Tekan tombol <strong>Share</strong> di Safari.</li>
+                    <li>Pilih <strong>Add to Home Screen</strong> / <strong>Tambahkan ke Layar Utama</strong>.</li>
+                    <li>Konfirmasi penambahan Lensku.</li>
+                </ol>
+                <button type="button" data-pwa-ios-help-close class="mt-4 rounded-xl border border-[#ead9b8] bg-white px-4 py-2 text-sm font-bold text-[#543019] transition hover:border-[#ffc20e] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Tutup</button>
+            </div>
+        </div>
 
         {{-- Global visual-search progress: hidden until an actual POST /search
             is about to be sent. Structural placement (never offsets) keeps it
