@@ -222,6 +222,14 @@ class VisualIndexBuilder
     }
 
     /**
+     * JSON state columns among the CAS guards. Only these need
+     * database-specific comparison; every other CAS column is scalar.
+     * Today that is just `crop` on both tables (both `$table->json()`,
+     * i.e. PostgreSQL `json` / SQLite TEXT).
+     */
+    private const JSON_STATE_COLUMNS = ['crop'];
+
+    /**
      * Append a photo-side state guard to an UPDATE/SELECT query: every
      * reference-affecting column must still hold its claimed value.
      * Comparison and update therefore happen in ONE atomic SQL statement —
@@ -231,6 +239,10 @@ class VisualIndexBuilder
     private static function applyPhotoStateGuard(\Illuminate\Database\Eloquent\Builder $query, array $raw): void
     {
         foreach ($raw as $column => $value) {
+            if (in_array($column, self::JSON_STATE_COLUMNS, true)) {
+                self::applyJsonGuard($query, $column, is_string($value) ? $value : null);
+                continue;
+            }
             $query->where($column, $value);
         }
     }
@@ -238,7 +250,39 @@ class VisualIndexBuilder
     private static function applyFeedbackStateGuard(\Illuminate\Database\Eloquent\Builder $query, array $raw): void
     {
         foreach ($raw as $column => $value) {
+            if (in_array($column, self::JSON_STATE_COLUMNS, true)) {
+                self::applyJsonGuard($query, $column, is_string($value) ? $value : null);
+                continue;
+            }
             $query->where($column, $value);
+        }
+    }
+
+    /**
+     * Database-safe JSON equality for one claimed value (raw stored text or
+     * null). NULL semantics: NULL matches only NULL; a NULL/non-NULL pair
+     * never matches, in either direction.
+     *
+     * PostgreSQL `json` has no `=` operator, so both sides are cast to
+     * `jsonb`, whose equality is semantic (key order and insignificant
+     * formatting insensitive) — consistent with the canonicalized PHP
+     * fingerprint. Identifiers are controlled constants and values are bound
+     * parameters, never interpolated. Other drivers (SQLite in tests) store
+     * JSON as TEXT and compare exact text: stricter, safe direction (a
+     * reformatted-but-equal value retries instead of falsely completing).
+     */
+    private static function applyJsonGuard(\Illuminate\Database\Eloquent\Builder $query, string $column, ?string $raw): void
+    {
+        if ($raw === null) {
+            $query->whereNull($column);
+
+            return;
+        }
+        if (\Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql') {
+            $wrapped = $query->getQuery()->getGrammar()->wrap($column);
+            $query->whereRaw($wrapped.'::jsonb = ?::jsonb', [$raw]);
+        } else {
+            $query->where($column, $raw);
         }
     }
 
