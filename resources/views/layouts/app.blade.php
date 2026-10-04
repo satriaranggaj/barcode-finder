@@ -25,6 +25,7 @@
                 </a>
                 <nav class="hidden items-center gap-2 text-sm font-semibold md:flex">
                     <a href="{{ route('products.index') }}" class="rounded-xl px-4 py-2.5 transition {{ request()->routeIs('products.index') ? 'bg-[#543019] text-white' : 'text-[#765c47] hover:bg-[#fff8d6]' }}">Katalog</a>
+                    <a href="{{ route('contact') }}" class="rounded-xl px-4 py-2.5 transition {{ request()->routeIs('contact') ? 'bg-[#543019] text-white' : 'text-[#765c47] hover:bg-[#fff8d6]' }}">Kontak</a>
                     @auth
                         <a href="{{ route('admin.index') }}" class="rounded-xl px-4 py-2.5 transition {{ request()->routeIs('admin.index') ? 'bg-[#543019] text-white' : 'text-[#765c47] hover:bg-[#fff8d6]' }}">Admin workspace</a>
                         @if (auth()->user()->isSuperAdmin())
@@ -58,6 +59,7 @@
                     <button type="button" data-pwa-ios hidden aria-label="Tambahkan Lensku ke Layar Utama" class="rounded-xl bg-[#543019] px-4 py-3 text-left font-bold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Tambahkan ke Layar Utama</button>
                     <button type="button" data-pwa-update hidden aria-label="Muat ulang ke versi baru Lensku" class="rounded-xl bg-[#ffc20e] px-4 py-3 text-left font-bold text-[#543019] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8b5e00]">Versi baru tersedia — Muat ulang</button>
                     <a href="{{ route('products.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('products.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">Katalog</a>
+                    <a href="{{ route('contact') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('contact') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">Kontak</a>
                     @auth
                         <a href="{{ route('admin.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('admin.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">Admin workspace</a>
                         @if (auth()->user()->isSuperAdmin())<a href="{{ route('admin.users.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('admin.users.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">User admin</a>@endif
@@ -141,6 +143,13 @@
                             class="text-[#765c47] transition hover:text-[#543019] "
                         >
                             Katalog
+                        </a>
+
+                        <a
+                            href="{{ route('contact') }}"
+                            class="text-[#765c47] transition hover:text-[#543019] "
+                        >
+                            Kontak
                         </a>
 
                         @auth

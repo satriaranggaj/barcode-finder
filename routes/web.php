@@ -8,6 +8,7 @@ use App\Http\Controllers\SearchFeedbackController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [ProductController::class, 'index'])->name('products.index');
+Route::get('/kontak', [ProductController::class, 'contact'])->name('contact');
 Route::post('/search', [ProductController::class, 'search'])->name('products.search');
 Route::post('/object-selection', [ObjectSelectionController::class, 'propose'])->middleware('throttle:20,1')->name('object-selection.propose');
 Route::post('/search-feedback', [SearchFeedbackController::class, 'store'])->middleware(['auth', 'throttle:20,1'])->name('search.feedback');

@@ -25,6 +25,11 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class ProductController extends Controller
 {
+    public function contact(): View
+    {
+        return view('products.contact');
+    }
+
     public function index(Request $request): View
     {
         $query = Product::query()->whereHas('photos');
