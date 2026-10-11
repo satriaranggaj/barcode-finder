@@ -103,9 +103,23 @@ class ProductController extends Controller
             'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:20480'],
         ]);
 
-        Excel::import(new ProductsImport, $validated['file']);
+        // Queued chunk import: dispatch only parses file metadata and copies
+        // the upload to the package's persistent local temp path inside the
+        // request; all 500-row chunks run on the existing database queue.
+        // The temp file is read by every chunk and deleted by the package's
+        // AfterImportJob on success; on terminal failure it is retained so a
+        // retry can still read it.
+        try {
+            Excel::queueImport(new ProductsImport, $validated['file']);
+        } catch (\Throwable $exception) {
+            report($exception);
 
-        return to_route('admin.index')->with('success', 'Data katalog berhasil diimpor. SKU lama tetap dipertahankan dan deskripsi terbaru diperbarui.');
+            return to_route('admin.index')->withErrors([
+                'file' => 'File katalog tidak dapat dimasukkan ke antrean. Coba lagi; tidak ada data yang diubah.',
+            ]);
+        }
+
+        return to_route('admin.index')->with('success', 'File katalog diterima dan sedang diproses di antrean. Produk akan diperbarui secara bertahap.');
     }
 
     private function applyProductSearch(Builder $query, string $search): Builder

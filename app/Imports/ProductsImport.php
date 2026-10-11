@@ -6,13 +6,14 @@ use App\Models\Product;
 use App\Models\ProductPhoto;
 use App\Services\ProductAttributes;
 use App\Services\VisualIndexLifecycle;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 
-class ProductsImport implements ToCollection, WithChunkReading, WithHeadingRow
+class ProductsImport implements ToCollection, WithChunkReading, WithHeadingRow, ShouldQueue
 {
     public function collection(Collection $rows): void
     {
