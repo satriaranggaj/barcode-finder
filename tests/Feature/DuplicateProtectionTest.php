@@ -37,7 +37,7 @@ class DuplicateProtectionTest extends TestCase
 
     public function test_reencoded_same_image_is_rejected_as_exact_duplicate(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU-A']);
         // Same decoded pixels in a different container share the content hash.
         $token = $this->stage($user, str_repeat('a', 64), str_repeat('0', 16));
@@ -51,7 +51,7 @@ class DuplicateProtectionTest extends TestCase
 
     public function test_exact_duplicate_cleans_evidence_and_never_405s(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU-A']);
         $token = $this->stage($user, str_repeat('a', 64), str_repeat('0', 16));
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'SKU-A'])->assertRedirect();
@@ -75,7 +75,7 @@ class DuplicateProtectionTest extends TestCase
 
     public function test_non_duplicate_confirmation_still_works(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU-A']);
         $token = $this->stage($user, str_repeat('b', 64), str_repeat('1', 16));
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'SKU-A'])
@@ -86,7 +86,7 @@ class DuplicateProtectionTest extends TestCase
 
     public function test_slightly_changed_image_is_stored_but_ineligible_with_reason(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU-A']);
         $token = $this->stage($user, str_repeat('a', 64), str_repeat('0', 16));
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'SKU-A'])->assertRedirect();
@@ -103,7 +103,7 @@ class DuplicateProtectionTest extends TestCase
 
     public function test_similar_photo_for_different_sku_is_not_blocked(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $one = Product::create(['sku' => 'SKU-A']);
         $two = Product::create(['sku' => 'SKU-B']);
         $token = $this->stage($user, str_repeat('a', 64), str_repeat('0', 16));
@@ -117,7 +117,7 @@ class DuplicateProtectionTest extends TestCase
 
     public function test_genuinely_different_view_is_eligible(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU-A']);
         $token = $this->stage($user, str_repeat('a', 64), str_repeat('0', 16));
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'SKU-A'])->assertRedirect();

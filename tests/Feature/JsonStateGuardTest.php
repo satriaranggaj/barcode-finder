@@ -133,7 +133,7 @@ class JsonStateGuardTest extends TestCase
     {
         Storage::fake('local');
         Storage::disk('local')->put($name, 'fake-bytes');
-        $admin = \App\Models\User::factory()->create(['role' => 'admin']);
+        $admin = \App\Models\User::factory()->create(['role' => 'user']);
 
         return \App\Models\SearchFeedback::create([
             'user_id' => $admin->id, 'confirmed_product_id' => $product->id,

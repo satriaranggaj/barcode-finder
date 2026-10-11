@@ -29,7 +29,7 @@ class AdminUserTest extends TestCase
         $superAdmin = User::factory()->create(['role' => 'super_admin']);
         $file = UploadedFile::fake()->createWithContent(
             'users.csv',
-            "name,email,password,role\nWarehouse Admin,warehouse@example.com,secret123,admin\n"
+            "name,email,password,role\nWarehouse Admin,warehouse@example.com,secret123,user\n"
         );
 
         $response = $this->actingAs($superAdmin)->post(route('admin.users.import'), [
@@ -39,23 +39,23 @@ class AdminUserTest extends TestCase
         $response->assertRedirect(route('admin.users.index'));
         $this->assertDatabaseHas('users', [
             'email' => 'warehouse@example.com',
-            'role' => 'admin',
+            'role' => 'user',
         ]);
         $this->assertTrue(Hash::check('secret123', User::where('email', 'warehouse@example.com')->value('password')));
     }
 
-    public function test_regular_admin_cannot_import_users(): void
+    public function test_regular_user_cannot_import_users(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
 
         $response = $this->actingAs($admin)->get(route('admin.users.template'));
 
         $response->assertForbidden();
     }
 
-    public function test_regular_admin_can_add_a_product_item(): void
+    public function test_regular_user_can_add_a_product_item(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
 
         $response = $this->actingAs($admin)->post(route('admin.products.store'), [
             'sku' => 'SKU-ADMIN-1',
@@ -75,7 +75,7 @@ class AdminUserTest extends TestCase
         $user = User::factory()->create([
             'name' => 'Nama Salah',
             'email' => 'wrong@example.com',
-            'role' => 'admin',
+            'role' => 'user',
             'password' => 'old-password',
         ]);
         $oldPassword = $user->password;
@@ -96,9 +96,9 @@ class AdminUserTest extends TestCase
         $this->assertSame($oldPassword, $user->password);
     }
 
-    public function test_regular_admin_cannot_edit_user(): void
+    public function test_regular_user_cannot_edit_user(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $user = User::factory()->create();
 
         $response = $this->actingAs($admin)->get(route('admin.users.edit', $user));
@@ -106,9 +106,9 @@ class AdminUserTest extends TestCase
         $response->assertForbidden();
     }
 
-    public function test_regular_admin_can_find_items_with_multiple_designs(): void
+    public function test_regular_user_can_find_items_with_multiple_designs(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'MULTI-1', 'description' => 'Motif bunga']);
         $product->photos()->createMany([
             ['path' => 'products/first.jpg'],
@@ -123,9 +123,9 @@ class AdminUserTest extends TestCase
             ->assertSee(route('admin.products.show', $product))->assertDontSee('EMPTY-1');
     }
 
-    public function test_regular_admin_can_open_and_edit_an_item_with_photos(): void
+    public function test_regular_user_can_open_and_edit_an_item_with_photos(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'EDIT-1', 'description' => 'Deskripsi lama']);
         $photo = $product->photos()->create(['path' => 'products/existing.jpg']);
         $this->actingAs($admin)->get(route('admin.products.show', $product))
@@ -141,7 +141,7 @@ class AdminUserTest extends TestCase
         $this->assertModelExists($photo);
     }
 
-    public function test_regular_admin_can_add_designs_without_removing_existing_photos(): void
+    public function test_regular_user_can_add_designs_without_removing_existing_photos(): void
     {
         config(['retrieval.driver' => 'legacy']);
         Storage::fake('public');
@@ -152,7 +152,7 @@ class AdminUserTest extends TestCase
             'status' => 'optimized', 'extension' => 'jpg',
             'master' => base64_encode(file_get_contents($prepared->getRealPath())),
         ])]);
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'UPLOAD-1']);
         $existing = $product->photos()->create(['path' => 'products/existing.jpg']);
         Storage::disk('public')->put($existing->path, 'existing');
@@ -170,10 +170,10 @@ class AdminUserTest extends TestCase
         Http::assertSentCount(4);
     }
 
-    public function test_regular_admin_can_delete_only_the_selected_design(): void
+    public function test_regular_user_can_delete_only_the_selected_design(): void
     {
         Storage::fake('public');
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'DELETE-1']);
         $selected = $product->photos()->create(['path' => 'products/selected.jpg']);
         $retained = $product->photos()->create(['path' => 'products/retained.jpg']);
@@ -203,9 +203,9 @@ class AdminUserTest extends TestCase
         $this->assertModelExists($photo);
     }
 
-    public function test_regular_admin_cannot_save_a_duplicate_sku(): void
+    public function test_regular_user_cannot_save_a_duplicate_sku(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'ORIGINAL']);
         Product::create(['sku' => 'TAKEN']);
 

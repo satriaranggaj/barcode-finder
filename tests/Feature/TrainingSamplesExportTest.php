@@ -42,7 +42,7 @@ class TrainingSamplesExportTest extends TestCase
     public function test_correct_prediction_exports_positive_without_hard_negative(): void
     {
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirm($user, $product, 'RIGHT', str_repeat('a', 64), str_repeat('0', 16));
 
@@ -67,7 +67,7 @@ class TrainingSamplesExportTest extends TestCase
     public function test_corrected_prediction_exports_hard_negative_pair(): void
     {
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirm($user, $product, 'WRONG', str_repeat('b', 64), str_repeat('1', 16));
 
@@ -82,7 +82,7 @@ class TrainingSamplesExportTest extends TestCase
     public function test_unverified_and_pending_rows_are_never_exported(): void
     {
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirm($user, $product, 'RIGHT', str_repeat('c', 64), str_repeat('2', 16));
         // A row that was never staff-confirmed must not leak into training data.
@@ -111,7 +111,7 @@ class TrainingSamplesExportTest extends TestCase
     public function test_missing_image_or_rejected_quality_is_not_exported(): void
     {
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirm($user, $product, 'RIGHT', str_repeat('a', 64), str_repeat('0', 16));
         $row = SearchFeedback::sole();
@@ -126,7 +126,7 @@ class TrainingSamplesExportTest extends TestCase
     public function test_renamed_product_does_not_export_a_stale_sku_label(): void
     {
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirm($user, $product, 'RIGHT', str_repeat('e', 64), str_repeat('9', 16));
         $product->update(['sku' => 'RENAMED']);

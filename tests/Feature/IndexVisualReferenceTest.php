@@ -36,7 +36,7 @@ class IndexVisualReferenceTest extends TestCase
             ['status' => 'optimized', 'extension' => 'jpg', 'master' => $bytes, 'catalog' => $bytes, 'thumbnail' => $bytes]
         )]);
 
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), [
                 'images' => [$file], 'selection_sources' => ['full'],
             ])->assertOk();
@@ -51,7 +51,7 @@ class IndexVisualReferenceTest extends TestCase
         Queue::fake();
         config(['retrieval.feedback_enabled' => true, 'retrieval.query_temp_disk' => 'local', 'retrieval.private_disk' => 'local']);
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         foreach ([['blur' => 120, 'suffix' => 'a', 'dhash' => '0'], ['blur' => 5, 'suffix' => 'b', 'dhash' => '2']] as $case) {
             $image = UploadedFile::fake()->image('q-'.$case['suffix'].'.jpg', 300, 300);
@@ -97,7 +97,7 @@ class IndexVisualReferenceTest extends TestCase
 
     public function test_job_coalesces_photo_and_feedback_into_one_generation(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU123']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'pending']);
         $row = SearchFeedback::create([
@@ -148,7 +148,7 @@ class IndexVisualReferenceTest extends TestCase
 
     public function test_job_marks_feedback_indexed_via_batch(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU123']);
         $row = SearchFeedback::create([
             'user_id' => $admin->id, 'confirmed_product_id' => $product->id,
@@ -228,7 +228,7 @@ class IndexVisualReferenceTest extends TestCase
     {
         Queue::fake();
         Storage::fake('public');
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU123']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'indexed']);
 
@@ -242,7 +242,7 @@ class IndexVisualReferenceTest extends TestCase
     {
         Storage::fake('public');
         Cache::forget('visual-index-rebuild-required');
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU123']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'pending']);
 
@@ -254,7 +254,7 @@ class IndexVisualReferenceTest extends TestCase
     public function test_product_metadata_change_flags_indexed_photos(): void
     {
         Queue::fake();
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU123', 'description' => 'Obeng plus']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'indexed']);
 

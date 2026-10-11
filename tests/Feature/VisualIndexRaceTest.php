@@ -377,7 +377,7 @@ class VisualIndexRaceTest extends TestCase
         // Test E: verified feedback whose product metadata changes mid-build
         // must not be stamped indexed_at with the stale published reference.
         Storage::fake('local');
-        $admin = \App\Models\User::factory()->create(['role' => 'admin']);
+        $admin = \App\Models\User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RACE-FB', 'description' => 'Desc V1']);
         Storage::disk('local')->put('verified-search/fb.webp', 'fake-bytes');
         $row = \App\Models\SearchFeedback::create([
@@ -404,7 +404,7 @@ class VisualIndexRaceTest extends TestCase
     {
         // Control for E: no mutation → verified feedback stamps normally.
         Storage::fake('local');
-        $admin = \App\Models\User::factory()->create(['role' => 'admin']);
+        $admin = \App\Models\User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RACE-FB-OK']);
         Storage::disk('local')->put('verified-search/ok.webp', 'fake-bytes');
         $row = \App\Models\SearchFeedback::create([

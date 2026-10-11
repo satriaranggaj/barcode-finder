@@ -34,7 +34,7 @@ class ImageSecurityTest extends TestCase
         Http::preventStrayRequests();
         $product = Product::create(['sku' => 'SEC-1']);
         $evil = $this->realUpload('photo.jpg', '<?php echo "pwn";');
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$evil]])
             ->assertUnprocessable();
         $this->assertSame(0, $product->photos()->count());
@@ -48,7 +48,7 @@ class ImageSecurityTest extends TestCase
         Http::preventStrayRequests();
         $product = Product::create(['sku' => 'SEC-2']);
         $big = UploadedFile::fake()->create('huge.jpg', 11 * 1024);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$big]])
             ->assertUnprocessable();
         Http::assertNothingSent();
@@ -77,7 +77,7 @@ class ImageSecurityTest extends TestCase
         $product = Product::create(['sku' => 'SEC-3']);
         // Client-controlled original name with traversal segments.
         $hostile = new UploadedFile($file->getRealPath(), '../../evil.php.jpg', 'image/jpeg', null, true);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$hostile]])
             ->assertOk();
         $photo = $product->photos()->sole();
@@ -93,7 +93,7 @@ class ImageSecurityTest extends TestCase
         config(['retrieval.feedback_enabled' => true, 'retrieval.query_temp_disk' => 'local', 'retrieval.private_disk' => 'local']);
         Storage::fake('public');
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SEC-4']);
         $image = UploadedFile::fake()->image('q.jpg', 300, 300);
         $token = app(SearchEvidence::class)->stage([

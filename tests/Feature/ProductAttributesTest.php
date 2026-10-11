@@ -62,7 +62,7 @@ class ProductAttributesTest extends TestCase
 
     public function test_controller_store_and_update_refresh_parser_rows(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $this->actingAs($admin)->post(route('admin.products.store'), ['sku' => 'SKU-A', 'description' => 'Obeng PH2 150MM'])
             ->assertRedirect();
         $product = Product::where('sku', 'SKU-A')->sole();

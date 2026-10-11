@@ -50,7 +50,7 @@ class VisualIndexBuilderTest extends TestCase
 
     public function test_mark_all_indexed_respects_include_verified(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU123']);
         $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'failed']);
         $row = SearchFeedback::create([

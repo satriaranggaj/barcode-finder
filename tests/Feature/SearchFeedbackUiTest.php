@@ -60,7 +60,7 @@ class SearchFeedbackUiTest extends TestCase
 
     public function test_results_show_prediction_quick_confirm_and_correction(): void
     {
-        $response = $this->searchPage(User::factory()->create(['role' => 'admin']));
+        $response = $this->searchPage(User::factory()->create(['role' => 'user']));
         $response->assertOk()->assertViewHas('feedbackToken')->assertViewHas('predictedSku', 'TOP-1');
         $html = $response->getContent();
         $this->assertStringContainsString('Prediksi AI:', $html);
@@ -75,7 +75,7 @@ class SearchFeedbackUiTest extends TestCase
 
     public function test_quick_confirm_stores_verified_feedback_with_success_message(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $token = $this->tokenFrom($this->searchPage($user)->getContent());
         $response = $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'TOP-1']);
         $response->assertRedirect(route('products.show', Product::where('sku', 'TOP-1')->sole()));
@@ -92,14 +92,14 @@ class SearchFeedbackUiTest extends TestCase
     {
         // Prediksi AI bukan ground truth: pencarian + staging saja tidak
         // menghasilkan label apapun sampai staff menekan konfirmasi.
-        $response = $this->searchPage(User::factory()->create(['role' => 'admin']));
+        $response = $this->searchPage(User::factory()->create(['role' => 'user']));
         $response->assertOk()->assertViewHas('feedbackToken');
         $this->assertSame(0, SearchFeedback::count());
     }
 
     public function test_correction_stores_hard_negative_pair(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $token = $this->tokenFrom($this->searchPage($user)->getContent());
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'TOP-2'])
             ->assertRedirect();
@@ -110,7 +110,7 @@ class SearchFeedbackUiTest extends TestCase
 
     public function test_double_submit_keeps_single_verified_row(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $token = $this->tokenFrom($this->searchPage($user)->getContent());
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'TOP-1'])->assertRedirect();
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'TOP-1'])
@@ -121,7 +121,7 @@ class SearchFeedbackUiTest extends TestCase
     public function test_expired_token_is_rejected(): void
     {
         config(['retrieval.feedback_enabled' => true]);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         Product::create(['sku' => 'TOP-1']);
         $this->actingAs($user)->post(route('search.feedback'), ['token' => (string) Str::uuid(), 'sku' => 'TOP-1'])
             ->assertForbidden();
@@ -131,7 +131,7 @@ class SearchFeedbackUiTest extends TestCase
     public function test_invalid_sku_is_rejected_before_storage(): void
     {
         config(['retrieval.feedback_enabled' => true]);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $token = $this->tokenFrom($this->searchPage($user)->getContent());
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'NOPE'])
             ->assertSessionHasErrors('sku');
@@ -141,7 +141,7 @@ class SearchFeedbackUiTest extends TestCase
     public function test_deleted_product_sku_is_rejected(): void
     {
         config(['retrieval.feedback_enabled' => true]);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $token = $this->tokenFrom($this->searchPage($user)->getContent());
         Product::where('sku', 'TOP-2')->delete();
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'TOP-2'])
@@ -153,7 +153,7 @@ class SearchFeedbackUiTest extends TestCase
     {
         config(['retrieval.driver' => 'faiss', 'retrieval.feedback_enabled' => true]);
         Http::fake([rtrim(config('services.ai.url'), '/').'/search' => Http::response([], 503)]);
-        $response = $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $response = $this->actingAs(User::factory()->create(['role' => 'user']))
             ->post(route('products.search'), ['image' => UploadedFile::fake()->image('q.jpg'), 'allow_feedback' => '1']);
         $response->assertOk()->assertViewHas('error')->assertDontSee('Konfirmasi SKU', false);
     }
@@ -172,7 +172,7 @@ class SearchFeedbackUiTest extends TestCase
         ], ['ambiguous' => true, 'ambiguity_reason' => 'same_family_variants',
             'ambiguity_alternatives' => [
                 ['sku' => 'SIZE-39', 'score' => 0.91], ['sku' => 'SIZE-40', 'score' => 0.89]]]);
-        $response = $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $response = $this->actingAs(User::factory()->create(['role' => 'user']))
             ->post(route('products.search'), ['image' => UploadedFile::fake()->image('q.jpg'), 'allow_feedback' => '1']);
         $response->assertOk()->assertViewHas('ambiguity', fn ($ambiguity) => $ambiguity['ambiguous'] === true
             && $ambiguity['reason'] === 'same_family_variants'
@@ -184,7 +184,7 @@ class SearchFeedbackUiTest extends TestCase
 
     public function test_clear_winner_shows_no_ambiguity_banner(): void
     {
-        $response = $this->searchPage(User::factory()->create(['role' => 'admin']));
+        $response = $this->searchPage(User::factory()->create(['role' => 'user']));
         $response->assertOk()->assertViewHas('ambiguity', fn ($ambiguity) => $ambiguity['ambiguous'] === false);
         $response->assertDontSee('Hasil imbang', false);
     }

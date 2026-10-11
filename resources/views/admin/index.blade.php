@@ -21,14 +21,14 @@
 </div>
 
 @if ($tab === 'without-photo')
-<div class="mb-10 grid gap-4 {{ auth()->user()->isSuperAdmin() ? 'xl:grid-cols-2 lg:grid-cols-2' : 'lg:grid-cols-1' }}">
+<div class="mb-10 grid gap-4 {{ auth()->user()->hasSuperAdminAccess() ? 'xl:grid-cols-2 lg:grid-cols-2' : 'lg:grid-cols-1' }}">
     <form action="{{ route('admin.products.store') }}" method="POST" class="rounded-2xl border border-[#eadfca] bg-[#fffdf4] p-6">
         @csrf
         <div class="flex items-start justify-between"><div><p class="text-xs font-bold uppercase tracking-[0.16em] text-[#8b7355]">01 · New item</p><h2 class="mt-2 font-display text-2xl font-bold">Tambah item satuan</h2></div><span class="rounded-xl bg-[#fff200] px-3 py-2 text-xl text-[#543019]">+</span></div>
         <div class="mt-5 space-y-4"><label class="block"><span class="text-sm font-bold">SKU</span><input name="sku" value="{{ old('sku') }}" required class="mt-2 w-full rounded-xl border border-[#ead9b8] bg-white px-4 py-3 font-mono text-sm outline-none focus:border-[#ffc20e]"></label><label class="block"><span class="text-sm font-bold">Deskripsi</span><textarea name="description" rows="3" class="mt-2 w-full resize-none rounded-xl border border-[#ead9b8] bg-white px-4 py-3 text-sm outline-none focus:border-[#ffc20e]">{{ old('description') }}</textarea></label></div>
         <button class="mt-4 rounded-xl bg-[#543019] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#6b4025]">Simpan item →</button>
     </form>
-    @if (auth()->user()->isSuperAdmin())
+    @if (auth()->user()->hasSuperAdminAccess())
     <form action="{{ route('admin.import') }}" method="POST" enctype="multipart/form-data" class="rounded-2xl border border-[#eadfca] bg-[#fffdf4] p-6">
         @csrf
         <div class="flex items-start justify-between"><div><p class="text-xs font-bold uppercase tracking-[0.16em] text-[#8b7355]">02 · Catalog data</p><h2 class="mt-2 font-display text-2xl font-bold">Import Excel terbaru</h2></div><span class="rounded-xl bg-[#fff200] px-3 py-2 text-xl text-[#543019]">↑</span></div>

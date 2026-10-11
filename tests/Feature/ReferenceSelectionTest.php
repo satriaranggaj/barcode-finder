@@ -25,7 +25,7 @@ class ReferenceSelectionTest extends TestCase
 
     private function admin(): User
     {
-        return User::factory()->create(['role' => 'admin']);
+        return User::factory()->create(['role' => 'user']);
     }
 
     public function test_upload_with_auto_selection_persists_crop_source_and_verified(): void

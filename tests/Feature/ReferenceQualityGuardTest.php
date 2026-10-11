@@ -49,7 +49,7 @@ class ReferenceQualityGuardTest extends TestCase
 
     public function test_valid_handheld_like_fixture_is_eligible_without_reasons(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirmWithMetrics($user, $product, ['blur' => 120, 'min_side' => 300, 'crop_pixels' => 90000, 'gray_std' => 45]);
         $row = SearchFeedback::sole();
@@ -60,7 +60,7 @@ class ReferenceQualityGuardTest extends TestCase
 
     public function test_extreme_blur_is_flagged_but_still_stored_verified(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirmWithMetrics($user, $product, ['blur' => 5, 'min_side' => 300, 'crop_pixels' => 90000, 'gray_std' => 45]);
         $row = SearchFeedback::sole();
@@ -72,7 +72,7 @@ class ReferenceQualityGuardTest extends TestCase
 
     public function test_tiny_crop_and_blank_capture_are_flagged(): void
     {
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirmWithMetrics($user, $product, ['blur' => 120, 'min_side' => 300, 'crop_pixels' => 900, 'gray_std' => 1.5]);
         $row = SearchFeedback::sole();
@@ -99,7 +99,7 @@ class ReferenceQualityGuardTest extends TestCase
     public function test_quality_rejected_row_is_excluded_from_both_exporters(): void
     {
         Storage::fake('public');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $this->confirmWithMetrics($user, $product, ['blur' => 5, 'min_side' => 300, 'crop_pixels' => 90000, 'gray_std' => 45]);
         $this->assertFalse(SearchFeedback::sole()->reference_eligible);

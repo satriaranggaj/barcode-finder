@@ -20,7 +20,7 @@ Route::middleware('guest')->group(function (): void {
 });
 Route::post('/logout', [AuthController::class, 'destroy'])->middleware('auth')->name('logout');
 
-Route::prefix('admin')->name('admin.')->middleware('admin:admin,super_admin')->group(function (): void {
+Route::prefix('admin')->name('admin.')->middleware('admin:user,super_admin,developer')->group(function (): void {
     Route::get('/', [ProductController::class, 'adminIndex'])->name('index');
     Route::get('/products/{product}', [ProductController::class, 'adminShow'])->name('products.show');
     Route::post('/products/{product}/photo', [ProductController::class, 'uploadPhoto'])->name('products.photo.store');
@@ -32,7 +32,7 @@ Route::prefix('admin')->name('admin.')->middleware('admin:admin,super_admin')->g
     Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
     Route::post('/object-selection', [ObjectSelectionController::class, 'propose'])->name('object-selection.propose');
 
-    Route::middleware('admin:super_admin')->group(function (): void {
+    Route::middleware('admin:super_admin,developer')->group(function (): void {
         Route::post('/search', [ProductController::class, 'search'])->name('search');
         Route::post('/import', [ProductController::class, 'importExcel'])->name('import');
         Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
@@ -41,5 +41,8 @@ Route::prefix('admin')->name('admin.')->middleware('admin:admin,super_admin')->g
         Route::post('/users/import', [AdminUserController::class, 'import'])->name('users.import');
         Route::get('/users/{user}/edit', [AdminUserController::class, 'edit'])->name('users.edit');
         Route::put('/users/{user}', [AdminUserController::class, 'update'])->name('users.update');
+        Route::middleware('admin:developer')->group(function (): void {
+            Route::delete('/users/{user}', [AdminUserController::class, 'destroy'])->name('users.destroy');
+        });
     });
 });

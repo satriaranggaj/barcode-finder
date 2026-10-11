@@ -51,7 +51,7 @@ class VisualWorkflowTest extends TestCase
     public function test_search_editor_and_consent_are_available(): void
     {
         config(['retrieval.driver' => 'faiss', 'retrieval.feedback_enabled' => true]);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))->get('/')
+        $this->actingAs(User::factory()->create(['role' => 'user']))->get('/')
             ->assertOk()->assertSee('data-object-selection', false)->assertSee('allow_feedback');
     }
 
@@ -75,7 +75,7 @@ class VisualWorkflowTest extends TestCase
         \Illuminate\Support\Facades\Queue::fake();
         $product = Product::create(['sku' => 'EDIT-CROP']);
         $photo = $product->photos()->create(['path' => 'products/a.jpg']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))->get(route('admin.photos.selection.edit', $photo))->assertOk();
+        $this->actingAs(User::factory()->create(['role' => 'user']))->get(route('admin.photos.selection.edit', $photo))->assertOk();
         $crop = ['x' => .1, 'y' => .1, 'width' => .8, 'height' => .8];
         $this->put(route('admin.photos.selection.update', $photo), ['crop_json' => json_encode($crop), 'selection_source' => 'manual'])->assertRedirect();
         $this->assertEquals($crop, $photo->fresh()->crop);
@@ -89,7 +89,7 @@ class VisualWorkflowTest extends TestCase
     {
         config(['retrieval.feedback_enabled' => true, 'retrieval.private_disk' => 'local']);
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $image = UploadedFile::fake()->image('q.jpg', 300, 300);
         $report = ['results' => [['sku' => 'WRONG', 'score' => .7]], 'feedback' => [
@@ -122,7 +122,7 @@ class VisualWorkflowTest extends TestCase
         $bytes = base64_encode(file_get_contents($image->getRealPath()));
         Http::fake(['*/prepare' => Http::response(['status' => 'optimized', 'extension' => 'jpg', 'master' => $bytes, 'catalog' => $bytes, 'thumbnail' => $bytes])]);
         $product = Product::create(['sku' => 'PRIVATE']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))->postJson(route('admin.products.photo.store', $product), ['images' => [$image]])->assertOk();
+        $this->actingAs(User::factory()->create(['role' => 'user']))->postJson(route('admin.products.photo.store', $product), ['images' => [$image]])->assertOk();
         $photo = $product->photos()->sole();
         foreach ([$photo->path, $photo->master_path, $photo->thumbnail_path] as $path) {
             Storage::disk('local')->assertExists($path);

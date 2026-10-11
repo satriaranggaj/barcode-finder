@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Maatwebsite\Excel\Concerns\ToCollection;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
@@ -18,6 +19,11 @@ class UsersImport implements ToCollection, WithChunkReading, WithHeadingRow
 
     /** @var array<int, string> */
     public array $errors = [];
+
+    /** @var list<string> roles the importing actor may assign */
+    public function __construct(private readonly array $allowedRoles = ['user', 'super_admin'])
+    {
+    }
 
     public function collection(Collection $rows): void
     {
@@ -39,13 +45,13 @@ class UsersImport implements ToCollection, WithChunkReading, WithHeadingRow
                 'name' => trim((string) ($row['name'] ?? '')),
                 'email' => strtolower(trim((string) ($row['email'] ?? ''))),
                 'password' => (string) ($row['password'] ?? ''),
-                'role' => trim((string) ($row['role'] ?? 'admin')),
+                'role' => trim((string) ($row['role'] ?? 'user')),
             ];
             $validator = Validator::make($data, [
                 'name' => ['required', 'string', 'max:120'],
                 'email' => ['required', 'email', 'max:255'],
                 'password' => ['required', 'string', 'min:8'],
-                'role' => ['required', 'in:admin,super_admin'],
+                'role' => ['required', Rule::in($this->allowedRoles)],
             ]);
 
             if ($validator->fails()) {

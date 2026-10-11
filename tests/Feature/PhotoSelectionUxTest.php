@@ -13,7 +13,7 @@ class PhotoSelectionUxTest extends TestCase
 
     public function test_admin_upload_has_file_list_without_small_thumbnail(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'UX-1']);
 
         $html = $this->actingAs($admin)->get(route('admin.products.show', $product))->getContent();

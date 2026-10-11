@@ -28,8 +28,8 @@
                     <a href="{{ route('contact') }}" class="rounded-xl px-4 py-2.5 transition {{ request()->routeIs('contact') ? 'bg-[#543019] text-white' : 'text-[#765c47] hover:bg-[#fff8d6]' }}">Kontak</a>
                     @auth
                         <a href="{{ route('admin.index') }}" class="rounded-xl px-4 py-2.5 transition {{ request()->routeIs('admin.index') ? 'bg-[#543019] text-white' : 'text-[#765c47] hover:bg-[#fff8d6]' }}">Admin workspace</a>
-                        @if (auth()->user()->isSuperAdmin())
-                            <a href="{{ route('admin.users.index') }}" class="rounded-xl px-4 py-2.5 transition {{ request()->routeIs('admin.users.index') ? 'bg-[#543019] text-white' : 'text-[#765c47] hover:bg-[#fff8d6]' }}">User admin</a>
+                        @if (auth()->user()->canManageUsers())
+                            <a href="{{ route('admin.users.index') }}" class="rounded-xl px-4 py-2.5 transition {{ request()->routeIs('admin.users.*') ? 'bg-[#543019] text-white' : 'text-[#765c47] hover:bg-[#fff8d6]' }}">User admin</a>
                         @endif
                     @endauth
                 </nav>
@@ -62,7 +62,7 @@
                     <a href="{{ route('contact') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('contact') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">Kontak</a>
                     @auth
                         <a href="{{ route('admin.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('admin.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">Admin workspace</a>
-                        @if (auth()->user()->isSuperAdmin())<a href="{{ route('admin.users.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('admin.users.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">User admin</a>@endif
+                        @if (auth()->user()->canManageUsers())<a href="{{ route('admin.users.index') }}" class="rounded-xl px-4 py-3 {{ request()->routeIs('admin.users.index') ? 'bg-[#543019] text-white' : 'text-[#765c47]' }}">User admin</a>@endif
                         <div class="mt-2 flex items-center justify-between border-t border-[#eadfca] px-4 pt-3 text-xs text-[#765c47]"><span>{{ auth()->user()->name }}</span><form method="POST" action="{{ route('logout') }}">@csrf<button class="font-bold text-[#ed1c24]">Keluar</button></form></div>
                     @else
                         <a href="{{ route('login') }}" class="rounded-xl px-4 py-3 font-bold text-[#8b5e00]">Login admin</a>

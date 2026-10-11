@@ -44,7 +44,7 @@ class SearchFeedbackPersistenceTest extends TestCase
     public function test_confirmation_persists_normalized_evidence_columns(): void
     {
         config(['retrieval.feedback_enabled' => true]);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $token = $this->stageReport($user);
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'RIGHT'])
@@ -75,7 +75,7 @@ class SearchFeedbackPersistenceTest extends TestCase
     public function test_embedding_candidate_is_rejected_without_persisting(): void
     {
         config(['retrieval.feedback_enabled' => true]);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         Product::create(['sku' => 'RIGHT']);
         $token = $this->stageReport($user, [
             'results' => [['sku' => 'WRONG', 'score' => 0.7, 'embedding' => [0.1, 0.2]]],
@@ -88,7 +88,7 @@ class SearchFeedbackPersistenceTest extends TestCase
     public function test_invalid_confidence_is_rejected_without_persisting(): void
     {
         config(['retrieval.feedback_enabled' => true]);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         Product::create(['sku' => 'RIGHT']);
         $token = $this->stageReport($user, ['confidence' => 'certain']);
         $this->actingAs($user)->post(route('search.feedback'), ['token' => $token, 'sku' => 'RIGHT'])
@@ -100,7 +100,7 @@ class SearchFeedbackPersistenceTest extends TestCase
     {
         config(['retrieval.feedback_enabled' => true, 'retrieval.query_temp_disk' => 'local', 'retrieval.private_disk' => 'local']);
         Storage::fake('local');
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $image = UploadedFile::fake()->image('q.jpg', 300, 300);
         // Staged before selection_source was threaded through: no source key.

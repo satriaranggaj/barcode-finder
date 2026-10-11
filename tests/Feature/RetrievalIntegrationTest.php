@@ -33,7 +33,7 @@ class RetrievalIntegrationTest extends TestCase
         }
         Http::fake([rtrim(config('services.ai.url'), '/').'/prepare' => $sequence]);
         $crop = ['x' => .1, 'y' => .2, 'width' => .5, 'height' => .6];
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), [
                 'images' => $files, 'crop_coordinates' => [json_encode($crop), 'null'],
                 'selection_sources' => ['manual', 'full'],
@@ -68,7 +68,7 @@ class RetrievalIntegrationTest extends TestCase
             'master' => base64_encode(file_get_contents($file->getRealPath())),
         ]]);
         $product = Product::create(['sku' => 'QUALITY-CFG']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$file]])
             ->assertOk();
         Http::assertSent(function (Request $request) {
@@ -90,7 +90,7 @@ class RetrievalIntegrationTest extends TestCase
         Storage::fake('public');
         Http::preventStrayRequests();
         $product = Product::create(['sku' => 'INVALID']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), [
                 'images' => [UploadedFile::fake()->image('one.jpg')],
                 'crop_coordinates' => [json_encode(['x' => .9, 'y' => 0, 'width' => .5, 'height' => 1])],
@@ -103,7 +103,7 @@ class RetrievalIntegrationTest extends TestCase
     public function test_disabled_feedback_cannot_store_photos(): void
     {
         config(['retrieval.feedback_enabled' => false]);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('search.feedback'), [])->assertNotFound();
     }
 
@@ -410,7 +410,7 @@ class RetrievalIntegrationTest extends TestCase
             $attempts++;
             throw new ConnectionException('cURL error 28: Operation timed out');
         }]);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->post(route('products.search'), ['image' => UploadedFile::fake()->image('query.jpg'), 'allow_feedback' => '1'])
             ->assertOk()->assertViewHas('error')->assertViewHas('results', fn ($rows) => $rows->isEmpty());
         // No retry on expensive inference calls; no transient file left behind.
@@ -462,7 +462,7 @@ class RetrievalIntegrationTest extends TestCase
             'catalog' => '!!!not-base64!!!',
         ])]);
         $product = Product::create(['sku' => 'PARTIAL']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$file]])
             ->assertStatus(503);
         $this->assertSame(0, $product->photos()->count());

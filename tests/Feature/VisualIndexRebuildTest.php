@@ -28,7 +28,7 @@ class VisualIndexRebuildTest extends TestCase
 
     private function admin(): User
     {
-        return User::factory()->create(['role' => 'admin']);
+        return User::factory()->create(['role' => 'user']);
     }
 
     private function servedPhoto(Product $product, string $status = 'indexed')

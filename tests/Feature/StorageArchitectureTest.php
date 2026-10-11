@@ -33,7 +33,7 @@ class StorageArchitectureTest extends TestCase
             'master' => base64_encode(file_get_contents($file->getRealPath())),
         ]]);
         $product = Product::create(['sku' => 'GENERATED']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$file]])
             ->assertOk();
         $photo = $product->photos()->sole();
@@ -56,7 +56,7 @@ class StorageArchitectureTest extends TestCase
             'status' => 'optimized', 'extension' => 'jpg', 'master' => $bytes, 'catalog' => $bytes, 'thumbnail' => $bytes,
         ])]);
         $product = Product::create(['sku' => 'S3-CATALOG']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$file]])
             ->assertOk();
         $photo = $product->photos()->sole();
@@ -93,12 +93,12 @@ class StorageArchitectureTest extends TestCase
 
         config(['product_images.disk' => 's3']);
         $expectPut(['visibility' => 'private']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$file]])->assertOk();
 
         config(['product_images.disk' => 'public']);
         $expectPut(['visibility' => 'public']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->postJson(route('admin.products.photo.store', $product), ['images' => [$file]])->assertOk();
 
         $this->assertCount(2, $storedPaths);
@@ -157,7 +157,7 @@ class StorageArchitectureTest extends TestCase
             ->andReturn(true);
         $target->shouldReceive('delete')->zeroOrMoreTimes();
         Storage::set('s3', $target);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'RIGHT']);
         $image = UploadedFile::fake()->image('q.jpg', 300, 300);
         $token = app(SearchEvidence::class)->stage([
@@ -203,7 +203,7 @@ class StorageArchitectureTest extends TestCase
         });
         $target->shouldReceive('delete')->once()->with(Mockery::pattern('#^verified-search/#'))->andReturn(true);
         Storage::set('s3', $target);
-        $user = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create(['role' => 'user']);
         Product::create(['sku' => 'RIGHT']);
         $image = UploadedFile::fake()->image('q.jpg', 300, 300);
         $token = app(SearchEvidence::class)->stage([
@@ -227,7 +227,7 @@ class StorageArchitectureTest extends TestCase
         $disk = Mockery::mock(FilesystemAdapter::class);
         $disk->shouldReceive('delete')->once()->andThrow(new \RuntimeException('object storage down'));
         Storage::set('public', $disk);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->delete(route('admin.photos.destroy', $photo))
             ->assertRedirect(route('admin.products.show', $product));
         $this->assertModelMissing($photo);
@@ -238,7 +238,7 @@ class StorageArchitectureTest extends TestCase
         Storage::fake('public');
         $product = Product::create(['sku' => 'MISSING']);
         $photo = $product->photos()->create(['disk' => 'public', 'path' => 'products/never-stored.jpg']);
-        $this->actingAs(User::factory()->create(['role' => 'admin']))
+        $this->actingAs(User::factory()->create(['role' => 'user']))
             ->get(route('admin.photos.selection.image', $photo))
             ->assertNotFound();
     }

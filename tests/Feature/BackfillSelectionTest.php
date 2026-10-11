@@ -146,7 +146,7 @@ class BackfillSelectionTest extends TestCase
         $auto = $this->makePhoto($product, 'a.jpg', ['x' => .1, 'y' => .1, 'width' => .5, 'height' => .5]);
         $auto->update(['selection_source' => 'auto', 'selection_verified' => false]);
         $failed = $this->makePhoto($product, 'f.jpg');
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
 
         $page = $this->actingAs($admin)->get(route('admin.products.show', $product));
         $page->assertOk();

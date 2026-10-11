@@ -57,7 +57,7 @@ class VisualSearchCommandsTest extends TestCase
 
     public function test_admin_sees_pending_references_nudge(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'user']);
         $product = Product::create(['sku' => 'SKU123']);
         $product->photos()->create(['path' => 'products/a.jpg', 'disk' => 'public', 'index_status' => 'pending']);
         SearchFeedback::create([
