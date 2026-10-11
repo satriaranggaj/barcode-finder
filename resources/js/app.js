@@ -1,5 +1,6 @@
 import './object-selection';
 import './pwa';
+import './photo-selection';
 import { compressImages, compressionNeeded } from './image-compression';
 import { handleSearchSubmit, resetSearchPage } from './submit-loading';
 import { emitCompression, initSearchReadiness } from './search-readiness';

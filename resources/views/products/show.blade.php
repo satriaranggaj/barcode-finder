@@ -187,24 +187,21 @@
                 hidden
                 class="mt-4 rounded-2xl border border-[#8b5e00] bg-[#6b4025] p-3"
             >
-                <div class="flex items-center gap-3">
+                <div class="flex items-center justify-between gap-3">
+                    <p
+                        data-selected-count
+                        role="status"
+                        class="text-[10px] font-bold uppercase tracking-wider text-[#fff200]"
+                    ></p>
 
-                    <img
-                        data-preview-image
-                        alt="Preview foto produk"
-                        class="h-20 w-20 rounded-xl object-cover"
+                    <button
+                        type="button"
+                        data-cancel-selection
+                        hidden
+                        class="shrink-0 rounded-lg border border-[#8b5e00] px-3 py-1.5 text-xs font-bold text-[#f8e9c2] transition hover:border-[#fff200] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#fff200]"
                     >
-
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-bold uppercase tracking-wider text-[#fff200]">
-                            Preview foto SKU
-                        </p>
-
-                        <p
-                            data-preview-name
-                            class="mt-1 truncate text-xs font-semibold text-[#f8e9c2]"
-                        ></p>
-                    </div>
+                        Batalkan pilihan
+                    </button>
                 </div>
 
                 {{-- Object Selection Editor --}}
@@ -212,15 +209,7 @@
                     data-object-selection 
                     data-select-url="{{ route('object-selection.propose') }}"
                     class="mt-4 rounded-xl border border-[#8b5e00] bg-[#543019] p-3"
-                >
-                    <p class="mb-2 text-xs font-bold text-[#fff200]">
-                        Sesuaikan area objek (opsional)
-                    </p>
-
-                    <p data-selection-status role="status" class="mb-2 text-xs text-[#f8e9c2]">
-                        Kotak objek diusulkan otomatis. Geser atau tarik tepinya bila perlu.
-                    </p>
-                    
+                >   
                     <div 
                         data-preview 
                         class="relative min-h-[200px] max-h-[500px] overflow-hidden rounded-lg bg-[#6b4025]"
@@ -237,6 +226,13 @@
                         data-source-input
                         value="full"
                     >
+                    <p class="my-2 text-xs font-bold text-[#fff200]">
+                        Sesuaikan area objek (opsional)
+                    </p>
+
+                    <p data-selection-status role="status" class="mb-2 text-xs text-[#f8e9c2]">
+                        Kotak objek diusulkan otomatis. Geser atau tarik tepinya bila perlu.
+                    </p>
                 </div>
 
                 <button
